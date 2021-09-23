@@ -20,12 +20,12 @@ void Background::stop(){
 void Background::run() {
   this->create_background_metatable(L);
 
-  while(!stopped) {
+  while (!stopped) {
 
     std::string tenant;
     auto rc = rgw::lua::read_script(dpp, store, tenant, null_yield, rgw::lua::context::background, rgw_script);
     if (rc == -ENOENT) {
-      //no script, nothing to do
+      // no script, nothing to do
     } else if (rc < 0) {
       ldpp_dout(dpp, 1) << "WARNING: failed to read background script. error " << rc << dendl;
     } else {
@@ -35,18 +35,11 @@ void Background::run() {
           const std::string err(lua_tostring(L, -1));
           ldpp_dout(dpp, 1) << "Lua ERROR: " << err << dendl;
         }
-      } catch (const std::runtime_error& e) {
+      } catch (const std::exception& e) {
          ldpp_dout(dpp, 1) << "Lua ERROR: " << e.what() << dendl;
       }
     }
-    try {
-      if(const auto x = std::stoi(rgw_map["setoff"]); x > 0) {
-        set_off = x;
-      }
-    } catch (const std::invalid_argument& e) {
-    } catch (const std::out_of_range& e) {
-    }
-    std::this_thread::sleep_for(std::chrono::seconds(set_off));
+    std::this_thread::sleep_for(std::chrono::seconds(execute_interval));
   }
 }
 

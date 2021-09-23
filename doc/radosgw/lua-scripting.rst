@@ -308,12 +308,7 @@ caching data from other context executions.
 The ``RGW`` Lua table which is accesible from any context saves the data written into it
 while execution and this data could be read and used later in any other execution.
 
-- Background script execution defualt interval is 5 seconds and it can be set via ``RGW.setoff`` from within any Lua script.
-
-.. code-block:: lua
-
-  RGW.setoff = 10
-
+- Background script execution defualt interval is 5 seconds.
 
 Lua Code Samples
 ----------------

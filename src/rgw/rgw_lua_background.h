@@ -6,10 +6,8 @@
 
 namespace rgw::lua {
 
-//Interval between each execution of the script
-//is set to 5 seconds, this setting is configurable
-//using RGW.setoff from within the lua script
-constexpr const int INIT_SET_OFF = 5;
+//Interval between each execution of the script is set to 5 seconds
+constexpr const int INIT_EXECUTE_INTERVAL = 5;
 
 //Writeable meta table named RGW with mutex protection
 using BackgroundMap = std::unordered_map<std::string, std::string>;
@@ -18,19 +16,19 @@ struct RGWTable : StringMapMetaTable<BackgroundMap,
     static std::string TableName() {return "RGW";}
     static std::string Name() {return TableName() + "Meta";}
     static int IndexClosure(lua_State* L) {
-        const auto mtx = reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
-        std::lock_guard l(*mtx);
-        return StringMapMetaTable::IndexClosure(L);
+      const auto mtx = reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
+      std::lock_guard l(*mtx);
+      return StringMapMetaTable::IndexClosure(L);
     }
     static int LenClosure(lua_State* L) {
-        static const auto mtx = reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
-        std::lock_guard l(*mtx);
-        return StringMapMetaTable::LenClosure(L);
+      static const auto mtx = reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
+      std::lock_guard l(*mtx);
+      return StringMapMetaTable::LenClosure(L);
     }
     static int NewIndexClosure(lua_State* L) {
-        static const auto mtx = reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
-        std::lock_guard l(*mtx);
-        return StringMapMetaTable::NewIndexClosure(L);
+      static const auto mtx = reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
+      std::lock_guard l(*mtx);
+      return StringMapMetaTable::NewIndexClosure(L);
     }
 };
 
@@ -40,7 +38,7 @@ private:
   BackgroundMap rgw_map;
   std::string rgw_script;
   bool stopped = false;
-  int set_off =  INIT_SET_OFF;
+  int execute_interval = INIT_EXECUTE_INTERVAL;
   const DoutPrefixProvider* dpp;
   rgw::sal::Store* store;
   std::thread runner;
