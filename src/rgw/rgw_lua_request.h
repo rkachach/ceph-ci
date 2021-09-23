@@ -10,7 +10,7 @@ namespace rgw::sal {
   class Store;
 }
 namespace rgw::lua {
-    class Background;
+  class Background;
 }
 
 namespace rgw::lua::request {
