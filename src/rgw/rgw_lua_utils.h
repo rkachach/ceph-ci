@@ -43,6 +43,9 @@ public:
   void reset(lua_State* _l=nullptr) {l = _l;}
 };
 
+constexpr const int MAX_LUA_VALUE_SIZE = 1000;
+constexpr const int MAX_LUA_KEY_ENTRIES = 100000;
+
 constexpr auto ONE_UPVAL    = 1;
 constexpr auto TWO_UPVALS   = 2;
 constexpr auto THREE_UPVALS = 3;
@@ -201,7 +204,15 @@ int StringMapWriteableNewIndex(lua_State* L) {
 
   const char* index = luaL_checkstring(L, 2);
   const char* value = luaL_checkstring(L, 3);
-  map->insert_or_assign(index, value);
+  if (strnlen(value, MAX_LUA_VALUE_SIZE) + strnlen(index, MAX_LUA_VALUE_SIZE)
+      > MAX_LUA_VALUE_SIZE) {
+    return luaL_error(L, "Lua maximum size of entry limit exceeded");
+  } else if (map->size() > MAX_LUA_KEY_ENTRIES) {
+    return luaL_error(L, "Lua max number of entries limit exceeded");
+  } else {
+    map->insert_or_assign(index, value);
+  }
+
   return NO_RETURNVAL;
 }
 

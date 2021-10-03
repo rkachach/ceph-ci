@@ -310,6 +310,13 @@ while execution and this data could be read and used later in any other executio
 
 - Background script execution defualt interval is 5 seconds.
 
+- Each RGW instance has its own ``RGW`` Lua table, while the Background Context script
+  will run on every instance.
+
+- The maximum number of entries in the table is 100,000. Each entry has a key and string value
+  of no more than 1KB (together). Lua script will abort with an error if the
+  number of entries or entry size exceeds their limits.
+
 Lua Code Samples
 ----------------
 - Print information on source and destination objects in case of copy:
