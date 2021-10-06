@@ -203,14 +203,19 @@ int StringMapWriteableNewIndex(lua_State* L) {
   const auto map = reinterpret_cast<MapType*>(lua_touserdata(L, lua_upvalueindex(1)));
 
   const char* index = luaL_checkstring(L, 2);
-  const char* value = luaL_checkstring(L, 3);
-  if (strnlen(value, MAX_LUA_VALUE_SIZE) + strnlen(index, MAX_LUA_VALUE_SIZE)
-      > MAX_LUA_VALUE_SIZE) {
-    return luaL_error(L, "Lua maximum size of entry limit exceeded");
-  } else if (map->size() > MAX_LUA_KEY_ENTRIES) {
-    return luaL_error(L, "Lua max number of entries limit exceeded");
+
+  if (lua_isnil(L, 3) == 0) {
+    const char* value = luaL_checkstring(L, 3);
+    if (strnlen(value, MAX_LUA_VALUE_SIZE) + strnlen(index, MAX_LUA_VALUE_SIZE)
+        > MAX_LUA_VALUE_SIZE) {
+      return luaL_error(L, "Lua maximum size of entry limit exceeded");
+    } else if (map->size() > MAX_LUA_KEY_ENTRIES) {
+      return luaL_error(L, "Lua max number of entries limit exceeded");
+    } else {
+      map->insert_or_assign(index, value);
+    }
   } else {
-    map->insert_or_assign(index, value);
+    map->erase(std::string(index));
   }
 
   return NO_RETURNVAL;
