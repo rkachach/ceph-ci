@@ -287,8 +287,22 @@ void RGWRoleMetadataHandler::init(RGWSI_Zone *_zone_svc,
   svc.meta = _meta_svc;
   svc.meta_be = _meta_be_svc;
   svc.sysobj = _sysobj_svc;
+  int r = svc.meta->create_be_handler(RGWSI_MetaBackend::Type::MDBE_SOBJ,
+                                      &be_handler);
+  if (r < 0) {
+    //ldout(ctx(), 0) << "ERROR: failed to create be_handler for Roles: r="
+    //                << r <<dendl;
+    return;
+  }
+
+  auto module = new RGWSI_Role_Module(svc);
+  RGWSI_MetaBackend_Handler_SObj* bh= static_cast<RGWSI_MetaBackend_Handler_SObj *>(be_handler);
+  be_module.reset(module);
+  bh->set_module(module);
+  base_init(cct, get_be_handler());
 }
 
+#if 0
 int RGWRoleMetadataHandler::do_start(optional_yield y, const DoutPrefixProvider *dpp)
 {
 
@@ -306,10 +320,11 @@ int RGWRoleMetadataHandler::do_start(optional_yield y, const DoutPrefixProvider 
   bh->set_module(module);
   return 0;
 }
+#endif
 
 RGWRoleMetadataHandler::RGWRoleMetadataHandler(CephContext *cct, Store* store)
 {
-  base_init(cct, get_be_handler());
+  this->cct = cct;
   store = store;
 }
 
