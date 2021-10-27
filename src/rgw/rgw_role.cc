@@ -365,9 +365,6 @@ int RGWRoleMetadataHandler::do_get(RGWSI_MetaBackend_Handler::Op *op,
                                    const DoutPrefixProvider *dpp)
 {
   RGWRoleCompleteInfo rci;
-  RGWObjVersionTracker objv_tracker;
-  real_time mtime;
-
 #if 0
   int ret = svc.role->read_info(op->ctx(),
                                 entry,
@@ -383,6 +380,9 @@ int RGWRoleMetadataHandler::do_get(RGWSI_MetaBackend_Handler::Op *op,
   if (ret < 0) {
     return ret;
   }
+
+  RGWObjVersionTracker objv_tracker = rci.info->get_objv_tracker();
+  real_time mtime = rci.info->get_mtime();
 
   RGWRoleMetadataObject *rdo = new RGWRoleMetadataObject(rci, objv_tracker.read_version,
                                                          mtime);
@@ -435,7 +435,6 @@ public:
   int put_checked(const DoutPrefixProvider *dpp) override {
     auto& rci = mdo->get_rci();
     auto mtime = mdo->get_mtime();
-    map<std::string, bufferlist> *pattrs = rci.has_attrs ? &rci.attrs : nullptr;
 #if 0
     int ret = rhandler->role->create(op->ctx(),
 					 rci.info,
@@ -448,6 +447,7 @@ public:
 
     return ret < 0 ? ret : STATUS_APPLIED;
 #endif
+    rci.info->set_mtime(mtime);
     int ret = rci.info->create(dpp, true, y);
     return ret < 0 ? ret : STATUS_APPLIED;
   }
