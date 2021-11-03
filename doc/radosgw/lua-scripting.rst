@@ -310,7 +310,7 @@ caching data from other context executions.
 The ``RGW`` Lua table which is accesible from any context saves the data written into it
 while execution and this data could be read and used later in any other execution.
 
-- Background script execution defualt interval is 5 seconds.
+- Background script execution default interval is 5 seconds.
 
 - Each RGW instance has its own ``RGW`` Lua table, while the Background Context script
   will run on every instance.
