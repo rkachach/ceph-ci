@@ -193,7 +193,11 @@ public:
 
   //int do_start(optional_yield y, const DoutPrefixProvider *dpp);
 
-  RGWRoleMetadataHandler(CephContext *cct, Store* store);
+  RGWRoleMetadataHandler(CephContext *cct, Store* store,
+                          RGWSI_Zone *_zone_svc,
+                          RGWSI_Meta *_meta_svc,
+                          RGWSI_MetaBackend *_meta_be_svc,
+                          RGWSI_SysObj *_sysobj_svc);
 
   std::string get_type() final { return "roles";  }
 

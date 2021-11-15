@@ -322,10 +322,15 @@ int RGWRoleMetadataHandler::do_start(optional_yield y, const DoutPrefixProvider 
 }
 #endif
 
-RGWRoleMetadataHandler::RGWRoleMetadataHandler(CephContext *cct, Store* store)
+RGWRoleMetadataHandler::RGWRoleMetadataHandler(CephContext *cct, Store* store,
+                                              RGWSI_Zone *_zone_svc,
+                                              RGWSI_Meta *_meta_svc,
+                                              RGWSI_MetaBackend *_meta_be_svc,
+                                              RGWSI_SysObj *_sysobj_svc)
 {
   this->cct = cct;
   this->store = store;
+  init(_zone_svc, _meta_svc, _meta_be_svc, _sysobj_svc);
 }
 
 void RGWRoleCompleteInfo::dump(ceph::Formatter *f) const
