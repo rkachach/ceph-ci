@@ -999,6 +999,12 @@ namespace rgw::sal {
     return std::unique_ptr<RGWRole>(p);
   }
 
+  std::unique_ptr<RGWRole> DBStore::get_role(RGWRoleInfo& info)
+  {
+    RGWRole* p = nullptr;
+    return std::unique_ptr<RGWRole>(p);
+  }
+
   int DBStore::get_roles(const DoutPrefixProvider *dpp,
       optional_yield y,
       const std::string& path_prefix,
