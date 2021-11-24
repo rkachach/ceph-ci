@@ -15,7 +15,9 @@
  */
 
 #include "common/debug.h"
+
 #include "common/ceph_json.h"
+#include "common/Formatter.h"
 
 #include "acconfig.h"
 
@@ -127,3 +129,83 @@ bool RGWBucketWebsiteConf::get_effective_key(const string& key, string *effectiv
 
   return true;
 }
+
+void RGWRedirectInfo::dump(Formatter *f) const
+{
+  encode_json("protocol", protocol, f);
+  encode_json("hostname", hostname, f);
+  encode_json("http_redirect_code", (int)http_redirect_code, f);
+}
+
+void RGWRedirectInfo::decode_json(JSONObj *obj) {
+  JSONDecoder::decode_json("protocol", protocol, obj);
+  JSONDecoder::decode_json("hostname", hostname, obj);
+  int code;
+  JSONDecoder::decode_json("http_redirect_code", code, obj);
+  http_redirect_code = code;
+}
+
+void RGWBWRedirectInfo::dump(Formatter *f) const
+{
+  encode_json("redirect", redirect, f);
+  encode_json("replace_key_prefix_with", replace_key_prefix_with, f);
+  encode_json("replace_key_with", replace_key_with, f);
+}
+
+void RGWBWRedirectInfo::decode_json(JSONObj *obj) {
+  JSONDecoder::decode_json("redirect", redirect, obj);
+  JSONDecoder::decode_json("replace_key_prefix_with", replace_key_prefix_with, obj);
+  JSONDecoder::decode_json("replace_key_with", replace_key_with, obj);
+}
+
+void RGWBWRoutingRuleCondition::dump(Formatter *f) const
+{
+  encode_json("key_prefix_equals", key_prefix_equals, f);
+  encode_json("http_error_code_returned_equals", (int)http_error_code_returned_equals, f);
+}
+
+void RGWBWRoutingRuleCondition::decode_json(JSONObj *obj) {
+  JSONDecoder::decode_json("key_prefix_equals", key_prefix_equals, obj);
+  int code;
+  JSONDecoder::decode_json("http_error_code_returned_equals", code, obj);
+  http_error_code_returned_equals = code;
+}
+
+void RGWBWRoutingRule::dump(Formatter *f) const
+{
+  encode_json("condition", condition, f);
+  encode_json("redirect_info", redirect_info, f);
+}
+
+void RGWBWRoutingRule::decode_json(JSONObj *obj) {
+  JSONDecoder::decode_json("condition", condition, obj);
+  JSONDecoder::decode_json("redirect_info", redirect_info, obj);
+}
+
+void RGWBWRoutingRules::dump(Formatter *f) const
+{
+  encode_json("rules", rules, f);
+}
+
+void RGWBWRoutingRules::decode_json(JSONObj *obj) {
+  JSONDecoder::decode_json("rules", rules, obj);
+}
+
+void RGWBucketWebsiteConf::dump(Formatter *f) const
+{
+  if (!redirect_all.hostname.empty()) {
+    encode_json("redirect_all", redirect_all, f);
+  } else {
+    encode_json("index_doc_suffix", index_doc_suffix, f);
+    encode_json("error_doc", error_doc, f);
+    encode_json("routing_rules", routing_rules, f);
+  }
+}
+
+void RGWBucketWebsiteConf::decode_json(JSONObj *obj) {
+  JSONDecoder::decode_json("redirect_all", redirect_all, obj);
+  JSONDecoder::decode_json("index_doc_suffix", index_doc_suffix, obj);
+  JSONDecoder::decode_json("error_doc", error_doc, obj);
+  JSONDecoder::decode_json("routing_rules", routing_rules, obj);
+}
+
