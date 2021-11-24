@@ -133,7 +133,6 @@ set(librgw_common_srcs
   rgw_user.cc
   rgw_website.cc
   rgw_xml.cc
-  rgw_xml_enc.cc
   rgw_torrent.cc
   rgw_crypt.cc
   rgw_crypt_sanitize.cc
