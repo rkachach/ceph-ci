@@ -21,9 +21,9 @@
 
 #include "services/svc_zone.h"
 #include "services/svc_sys_obj.h"
-#include "services/svc_role.h"
 #include "services/svc_meta_be_sobj.h"
 #include "services/svc_meta.h"
+#include "services/svc_role_rados.h"
 
 #define dout_subsys ceph_subsys_rgw
 
@@ -361,7 +361,7 @@ int RGWRoleMetadataHandler::do_start(optional_yield y, const DoutPrefixProvider 
 #endif
 
 RGWRoleMetadataHandler::RGWRoleMetadataHandler(CephContext *cct, Store* store,
-                                              RGWSI_Role *role_svc)
+                                              RGWSI_Role_RADOS *role_svc)
 {
   this->cct = cct;
   this->store = store;

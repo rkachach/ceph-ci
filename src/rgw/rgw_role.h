@@ -175,10 +175,10 @@ class RGWRoleMetadataHandler: public RGWMetadataHandler_GenericMetaBE
 public:
   public:
   struct Svc {
-    RGWSI_Role *role{nullptr};
+    RGWSI_Role_RADOS *role{nullptr};
   } svc;
 
-  RGWRoleMetadataHandler(CephContext *cct, Store* store, RGWSI_Role *role_svc);
+  RGWRoleMetadataHandler(CephContext *cct, Store* store, RGWSI_Role_RADOS *role_svc);
 
   std::string get_type() final { return "roles";  }
 
