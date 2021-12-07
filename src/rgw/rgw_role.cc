@@ -68,6 +68,19 @@ void RGWRoleInfo::decode_json(JSONObj *obj)
   JSONDecoder::decode_json("CreateDate", creation_date, obj);
   JSONDecoder::decode_json("MaxSessionDuration", max_session_duration, obj);
   JSONDecoder::decode_json("AssumeRolePolicyDocument", trust_policy, obj);
+  bool tag_found = false;
+  do {
+    std::string key, val;
+    tag_found = JSONDecoder::decode_json("Key", key, obj, false);
+    if (!tag_found) {
+      break;
+    }
+    tag_found = JSONDecoder::decode_json("Value", val, obj, false);
+    if (!tag_found) {
+      break;
+    }
+    tags.emplace(key, val);
+  }while(tag_found);
 }
 
 RGWRole::RGWRole(std::string name,
