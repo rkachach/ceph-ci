@@ -16,18 +16,18 @@ struct RGWTable : StringMapMetaTable<BackgroundMap,
     static std::string TableName() {return "RGW";}
     static std::string Name() {return TableName() + "Meta";}
     static int IndexClosure(lua_State* L) {
-      const auto mtx = reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
-      std::lock_guard l(*mtx);
+      auto& mtx = *reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
+      std::lock_guard l(mtx);
       return StringMapMetaTable::IndexClosure(L);
     }
     static int LenClosure(lua_State* L) {
-      static const auto mtx = reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
-      std::lock_guard l(*mtx);
+      auto& mtx = *reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
+      std::lock_guard l(mtx);
       return StringMapMetaTable::LenClosure(L);
     }
     static int NewIndexClosure(lua_State* L) {
-      static const auto mtx = reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
-      std::lock_guard l(*mtx);
+      auto& mtx = *reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
+      std::lock_guard l(mtx);
       return StringMapMetaTable::NewIndexClosure(L);
     }
 };
@@ -39,33 +39,34 @@ private:
   std::string rgw_script;
   bool stopped = false;
   int execute_interval = INIT_EXECUTE_INTERVAL;
-  const DoutPrefixProvider* dpp;
-  rgw::sal::Store* store;
-  std::thread runner;
-  CephContext* cct;
+  const DoutPrefixProvider* const dpp;
+  rgw::sal::Store* const store;
+  CephContext* const cct;
   std::string luarocks_path;
+  std::thread runner;
   std::mutex m_mutex;
 
   void run();
 
 public:
   Background(const DoutPrefixProvider* dpp,
-      rgw::sal::Store* const store,
+      rgw::sal::Store* store,
       CephContext* cct,
       const std::string& luarocks_path) :
     dpp(dpp),
     store(store),
     cct(cct),
-    luarocks_path(luarocks_path) {
-      runner = std::thread(&Background::run, this);
-      const auto rc = ceph_pthread_setname(runner.native_handle(), "lua_background");
+    luarocks_path(luarocks_path),
+    runner(std::thread(&Background::run, this)) {
+      const auto rc = ceph_pthread_setname(runner.native_handle(),
+                                           "lua_background");
       ceph_assert(rc == 0);
-  }
+    }
 
-  ~Background() = default;
-  void stop();
-  void shutdown();
-  void create_background_metatable(lua_State* L);
+    ~Background() = default;
+    void stop();
+    void shutdown();
+    void create_background_metatable(lua_State* L);
 };
 
 } //namepsace lua
