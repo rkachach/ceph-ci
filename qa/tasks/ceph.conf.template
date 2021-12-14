@@ -99,6 +99,8 @@
 	mon_warn_on_insecure_global_id_reclaim = false
 	mon_warn_on_insecure_global_id_reclaim_allowed = false
 
+	mon_health_warn_filestore_osds = false
+
 [client]
 	rgw cache enabled = true
 	rgw enable ops log = true
