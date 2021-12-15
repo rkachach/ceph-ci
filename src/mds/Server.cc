@@ -5427,11 +5427,97 @@ void Server::handle_client_setdirlayout(MDRequestRef& mdr)
 }
 
 // XATTRS
-
-int Server::parse_layout_vxattr(string name, string value, const OSDMap& osdmap,
-				file_layout_t *layout, bool validate)
+std::pair<int, Server::JSONParsingError> Server::parse_layout_vxattr_json(
+  string name, string value, const OSDMap& osdmap, file_layout_t *layout)
 {
-  dout(20) << "parse_layout_vxattr name " << name << " value '" << value << "'" << dendl;
+  auto parse_pool = [&](std::string pool_name, int64_t pool_id) -> int64_t {
+    if (pool_name != "") {
+      int64_t _pool_id = osdmap.lookup_pg_pool_name(pool_name);
+      if (_pool_id < 0) {
+	dout(10) << __func__ << ": unknown pool name:" << pool_name << dendl;
+	return -CEPHFS_EINVAL;
+      }
+      return _pool_id;
+    } else if (pool_id >= 0) {
+      const auto pools = osdmap.get_pools();
+      if (pools.find(pool_id) == pools.end()) {
+	dout(10) << __func__ << ": unknown pool id:" << pool_id << dendl;
+	return -CEPHFS_EINVAL;
+      }
+      return pool_id;
+    } else {
+      return -CEPHFS_EINVAL;
+    }
+  };
+
+  try {
+    if (name == "layout") {
+      JSONParser json_parser;
+      if (json_parser.parse(value.c_str(), value.length()) and json_parser.is_object()) {
+	std::string field;
+	try {
+	  field = "object_size";
+	  JSONDecoder::decode_json("object_size", layout->object_size, &json_parser, true);
+
+	  field = "stripe_unit";
+	  JSONDecoder::decode_json("stripe_unit", layout->stripe_unit, &json_parser, true);
+	  
+	  field = "stripe_count";
+	  JSONDecoder::decode_json("stripe_count", layout->stripe_count, &json_parser, true);
+	  
+	  field = "pool_namespace";
+	  JSONDecoder::decode_json("pool_namespace", layout->pool_ns, &json_parser, false);
+	  
+	  field = "pool_id";
+	  int64_t pool_id = 0;
+	  JSONDecoder::decode_json("pool_id", pool_id, &json_parser, false);
+
+	  field = "pool_name";
+	  std::string pool_name;
+	  JSONDecoder::decode_json("pool_name", pool_name, &json_parser, false);
+
+	  pool_id = parse_pool(pool_name, pool_id);
+	  if (pool_id < 0) {
+	    return {(int)pool_id, JSONParsingError::BAD_POOL_ID};
+	  }
+	  layout->pool_id = pool_id;
+	} catch (JSONDecoder::err&) {
+	  dout(10) << __func__ << ": json is missing a mandatory field named "
+		   << field << dendl;
+	  return {-CEPHFS_EINVAL, JSONParsingError::MISSING_MANDATORY_FIELD};
+	}
+      } else {
+	dout(10) << __func__ << ": bad json" << dendl;
+	return {-CEPHFS_EINVAL, JSONParsingError::BAD_JSON};
+      }
+    } else if (name == "layout.object_size") {
+      layout->object_size = boost::lexical_cast<unsigned>(value);
+    } else if (name == "layout.stripe_unit") {
+      layout->stripe_unit = boost::lexical_cast<unsigned>(value);
+    } else if (name == "layout.stripe_count") {
+      layout->stripe_count = boost::lexical_cast<unsigned>(value);
+    } else if (name == "layout.pool_id") {
+      layout->pool_id = parse_pool(""s, boost::lexical_cast<int64_t>(value));
+    } else if (name == "layout.pool" || name == "layout.pool_name") {
+      layout->pool_id = parse_pool(value, 0);
+    } else if (name == "layout.pool_namespace") {
+      layout->pool_ns = value;
+    } else {
+      dout(10) << __func__ << ": unknown layout vxattr " << name << dendl;
+      return {-CEPHFS_ENODATA, JSONParsingError::UNKNOWN_LAYOUT_VXATTR}; // no such attribute
+    }
+  } catch (boost::bad_lexical_cast const&) {
+    dout(10) << __func__ << ": bad vxattr value:" << value
+	     << ", unable to parse for xattr:" << name << dendl;
+    return {-CEPHFS_EINVAL, JSONParsingError::BAD_JSON};
+  }
+  return {0, JSONParsingError::SUCCESS};
+}
+
+// parse old style layout string
+int Server::parse_layout_vxattr_string(
+  string name, string value, const OSDMap& osdmap, file_layout_t *layout)
+{
   try {
     if (name == "layout") {
       string::iterator begin = value.begin();
@@ -5442,14 +5528,14 @@ int Server::parse_layout_vxattr(string name, string value, const OSDMap& osdmap,
 	return -CEPHFS_EINVAL;
       }
       string left(begin, end);
-      dout(10) << " parsed " << m << " left '" << left << "'" << dendl;
+      dout(10) << __func__ << ": parsed " << m << " left '" << left << "'" << dendl;
       if (begin != end)
 	return -CEPHFS_EINVAL;
       for (map<string,string>::iterator q = m.begin(); q != m.end(); ++q) {
         // Skip validation on each attr, we do it once at the end (avoid
         // rejecting intermediate states if the overall result is ok)
-	int r = parse_layout_vxattr(string("layout.") + q->first, q->second,
-                                    osdmap, layout, false);
+	int r = parse_layout_vxattr_string(string("layout.") + q->first, q->second,
+					   osdmap, layout);
 	if (r < 0)
 	  return r;
       }
@@ -5465,7 +5551,7 @@ int Server::parse_layout_vxattr(string name, string value, const OSDMap& osdmap,
       } catch (boost::bad_lexical_cast const&) {
 	int64_t pool = osdmap.lookup_pg_pool_name(value);
 	if (pool < 0) {
-	  dout(10) << " unknown pool " << value << dendl;
+	  dout(10) << __func__ << ": unknown pool " << value << dendl;
 	  return -CEPHFS_ENOENT;
 	}
 	layout->pool_id = pool;
@@ -5473,20 +5559,43 @@ int Server::parse_layout_vxattr(string name, string value, const OSDMap& osdmap,
     } else if (name == "layout.pool_namespace") {
       layout->pool_ns = value;
     } else {
-      dout(10) << " unknown layout vxattr " << name << dendl;
+      dout(10) << __func__ << ": unknown layout vxattr " << name << dendl;
       return -CEPHFS_EINVAL;
     }
   } catch (boost::bad_lexical_cast const&) {
-    dout(10) << "bad vxattr value, unable to parse int for " << name << dendl;
+    dout(10) << __func__ << ": bad vxattr value, unable to parse int for "
+	     << name << dendl;
     return -CEPHFS_EINVAL;
   }
+  return 0;
+}
+
+int Server::parse_layout_vxattr(string name, string value, const OSDMap& osdmap,
+				file_layout_t *layout, bool validate)
+{
+  dout(20) << __func__ << ": name:" << name << " value:'" << value << "'" << dendl;
+  
+  // Since there's no way to identify old and new clients at the server,
+  // we'll assume that we have a JSON string from the client.
+  // In the event that JSON parsing fails we'll assume that we have a regular
+  // string from an old client and attempt to parse it in the catch block.
+  auto [r, jpe] = parse_layout_vxattr_json(name, value, osdmap, layout);
+
+  if (r < 0) {
+    if (jpe == JSONParsingError::BAD_JSON) {
+      // we try to parse it as old style string
+      r = parse_layout_vxattr_string(name, value, osdmap, layout);
+    }
+  }
+  if (r < 0)
+    return r;
 
   if (validate && !layout->is_valid()) {
-    dout(10) << "bad layout" << dendl;
+    dout(10) << __func__ << ": bad layout" << dendl;
     return -CEPHFS_EINVAL;
   }
   if (!mds->mdsmap->is_data_pool(layout->pool_id)) {
-    dout(10) << " invalid data pool " << layout->pool_id << dendl;
+    dout(10) << __func__ << ": invalid data pool " << layout->pool_id << dendl;
     return -CEPHFS_EINVAL;
   }
   return 0;
