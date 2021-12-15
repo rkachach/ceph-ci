@@ -7448,6 +7448,53 @@ int Client::_getattr(Inode *in, int mask, const UserPerm& perms, bool force)
   return res;
 }
 
+int Client::_getvxattr(
+  Inode *in,
+  const UserPerm& perms,
+  const char *xattr_name,
+  ssize_t size,
+  void *value)
+{
+  if (!xattr_name || strlen(xattr_name) <= 0 || strlen(xattr_name) > 255) {
+    return -CEPHFS_ENODATA;
+  }
+
+  MetaRequest *req = new MetaRequest(CEPH_MDS_OP_GETVXATTR);
+  filepath path;
+  in->make_nosnap_relative_path(path);
+  req->set_filepath(path);
+  req->set_inode(in);
+  req->set_string2(xattr_name);
+
+  bufferlist bl;
+  int res = make_request(req, perms, nullptr, nullptr, (mds_rank_t)-1, &bl);
+  ldout(cct, 10) << __func__ << " result=" << res << dendl;
+
+  if (res < 0) {
+    return res;
+  }
+
+  std::string buf;
+  auto p = bl.cbegin();
+
+  DECODE_START(1, p);
+  decode(buf, p);
+  DECODE_FINISH(p);
+
+  ssize_t len = buf.length();
+
+  res = len; // refer to man getxattr(2) for output buffer size == 0
+
+  if (size > 0) {
+    if (len > size) {
+      res = -CEPHFS_ERANGE; // insufficient output buffer space
+    } else {
+      memcpy(value, buf.c_str(), len);
+    }
+  }
+  return res;
+}
+
 int Client::_do_setattr(Inode *in, struct ceph_statx *stx, int mask,
 			const UserPerm& perms, InodeRef *inp)
 {
@@ -12215,8 +12262,31 @@ int Client::_getxattr(Inode *in, const char *name, void *value, size_t size,
 		      const UserPerm& perms)
 {
   int r;
+  const VXattr *vxattr = nullptr;
 
-  const VXattr *vxattr = _match_vxattr(in, name);
+  auto is_entire_cluster_quincy = [&]() -> bool {
+    for (auto [rank, session] : mds_sessions) {
+      const uint64_t features = session->con->get_features();
+      if (!HAVE_FEATURE(features, SERVER_QUINCY)) {
+	return false;
+      }
+    }
+    return true;
+  };
+  // for new getvxattr RPC
+  // IMPORTANT
+  // We need to ensure that the cluster is at least quincy so that we don't
+  // send an op unknown to older clusters. Unfortunately, older clusters do a
+  // ceph_abort() while collecting op latency statistics if the op is unknown.
+  if (is_entire_cluster_quincy()) {
+    if (strncmp(name, "ceph.dir.layout", 15) == 0 ||
+	strncmp(name, "ceph.dir.pin", 12) == 0) {
+      r = _getvxattr(in, perms, name, size, value);
+      goto out;
+    }
+  }
+
+  vxattr = _match_vxattr(in, name);
   if (vxattr) {
     r = -CEPHFS_ENODATA;
 
@@ -12262,7 +12332,7 @@ int Client::_getxattr(Inode *in, const char *name, void *value, size_t size,
   if (r == 0) {
     string n(name);
     r = -CEPHFS_ENODATA;
-   if (in->xattrs.count(n)) {
+    if (in->xattrs.count(n)) {
       r = in->xattrs[n].length();
       if (r > 0 && size != 0) {
 	if (size >= (unsigned)r)
@@ -12837,13 +12907,8 @@ size_t Client::_vxattrcb_client_id(Inode *in, char *val, size_t size)
 }
 
 const Client::VXattr Client::_dir_vxattrs[] = {
-  {
-    name: "ceph.dir.layout",
-    getxattr_cb: &Client::_vxattrcb_layout,
-    readonly: false,
-    exists_cb: &Client::_vxattrcb_layout_exists,
-    flags: 0,
-  },
+  // FIXME
+  // Delete the following dir layout field definitions for release "S"
   XATTR_LAYOUT_FIELD(dir, layout, stripe_unit),
   XATTR_LAYOUT_FIELD(dir, layout, stripe_count),
   XATTR_LAYOUT_FIELD(dir, layout, object_size),
@@ -12867,6 +12932,8 @@ const Client::VXattr Client::_dir_vxattrs[] = {
   },
   XATTR_QUOTA_FIELD(quota, max_bytes),
   XATTR_QUOTA_FIELD(quota, max_files),
+  // FIXME
+  // Delete the following dir pin field definitions for release "S"
   {
     name: "ceph.dir.pin",
     getxattr_cb: &Client::_vxattrcb_dir_pin,
