@@ -80,6 +80,7 @@ enum {
   l_mdss_req_unlink_latency,
   l_mdss_cap_revoke_eviction,
   l_mdss_cap_acquisition_throttle,
+  l_mdss_req_getvxattr_latency,
   l_mdss_last,
 };
 
@@ -95,6 +96,14 @@ public:
     TRIM = (1<<2),
     ENFORCE_LIVENESS = (1<<3),
   };
+  enum class JSONParsingError : uint32_t {
+    SUCCESS = 0,
+    BAD_POOL_ID = 1,
+    MISSING_MANDATORY_FIELD = 2,
+    UNKNOWN_LAYOUT_VXATTR = 3,
+    BAD_JSON = 4
+  };
+
   explicit Server(MDSRank *m, MetricsHandler *metrics_handler);
   ~Server() {
     g_ceph_context->get_perfcounters_collection()->remove(logger);
@@ -213,6 +222,10 @@ public:
 
   int parse_quota_vxattr(std::string name, std::string value, quota_info_t *quota);
   void create_quota_realm(CInode *in);
+  std::pair<int, JSONParsingError> parse_layout_vxattr_json(
+    std::string name, std::string value, const OSDMap& osdmap, file_layout_t *layout);
+  int parse_layout_vxattr_string(std::string name, std::string value, const OSDMap& osdmap,
+				 file_layout_t *layout);
   int parse_layout_vxattr(std::string name, std::string value, const OSDMap& osdmap,
 			  file_layout_t *layout, bool validate=true);
   int check_layout_vxattr(MDRequestRef& mdr,
@@ -221,6 +234,7 @@ public:
                           file_layout_t *layout);
   void handle_set_vxattr(MDRequestRef& mdr, CInode *cur);
   void handle_remove_vxattr(MDRequestRef& mdr, CInode *cur);
+  void handle_client_getvxattr(MDRequestRef& mdr);
   void handle_client_setxattr(MDRequestRef& mdr);
   void handle_client_removexattr(MDRequestRef& mdr);
 
