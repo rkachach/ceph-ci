@@ -16,18 +16,18 @@ struct RGWTable : StringMapMetaTable<BackgroundMap,
     static std::string TableName() {return "RGW";}
     static std::string Name() {return TableName() + "Meta";}
     static int IndexClosure(lua_State* L) {
-      const auto mtx = reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
-      std::lock_guard l(*mtx);
+      auto& mtx = *reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
+      std::lock_guard l(mtx);
       return StringMapMetaTable::IndexClosure(L);
     }
     static int LenClosure(lua_State* L) {
-      static const auto mtx = reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
-      std::lock_guard l(*mtx);
+      auto& mtx = *reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
+      std::lock_guard l(mtx);
       return StringMapMetaTable::LenClosure(L);
     }
     static int NewIndexClosure(lua_State* L) {
-      static const auto mtx = reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
-      std::lock_guard l(*mtx);
+      auto& mtx = *reinterpret_cast<std::mutex*>(lua_touserdata(L, lua_upvalueindex(2)));
+      std::lock_guard l(mtx);
       return StringMapMetaTable::NewIndexClosure(L);
     }
 };
