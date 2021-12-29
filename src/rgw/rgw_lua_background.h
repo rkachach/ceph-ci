@@ -57,7 +57,7 @@ public:
     store(store),
     cct(cct),
     luarocks_path(luarocks_path),
-    runner(std::thread(&Background::run, this)) {
+    runner(&Background::run, this) {
       const auto rc = ceph_pthread_setname(runner.native_handle(),
                                            "lua_background");
       ceph_assert(rc == 0);
