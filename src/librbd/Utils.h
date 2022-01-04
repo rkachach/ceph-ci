@@ -296,7 +296,8 @@ int init_rados(CephContext *cct,
                const std::string &description,
                std::vector<const char*>& args,
                std::shared_ptr<librados::Rados> *rados_ref,
-               bool strip_cluster_overrides);
+               bool strip_cluster_overrides,
+               bool set_global_admin_socket);
 
 } // namespace util
 } // namespace librbd

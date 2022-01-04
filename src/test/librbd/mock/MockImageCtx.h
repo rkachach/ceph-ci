@@ -62,6 +62,7 @@ struct MockImageCtx {
       lock_tag(image_ctx.lock_tag),
       asio_engine(image_ctx.asio_engine),
       rados_api(image_ctx.rados_api),
+      owned_rados(image_ctx.owned_rados),
       owner_lock(image_ctx.owner_lock),
       image_lock(image_ctx.image_lock),
       timestamp_lock(image_ctx.timestamp_lock),
@@ -262,6 +263,8 @@ struct MockImageCtx {
 
   librados::IoCtx md_ctx;
   librados::IoCtx data_ctx;
+
+  std::shared_ptr<librados::Rados> owned_rados;
 
   ceph::shared_mutex &owner_lock;
   ceph::shared_mutex &image_lock;

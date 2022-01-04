@@ -273,7 +273,7 @@ void PoolReplayer<I>::init(const std::string& site_name) {
   int r = librbd::util::init_rados(dout_context, g_ceph_context->_conf->cluster,
                                    g_ceph_context->_conf->name.to_str(), "", "",
                                    "local cluster", m_args, &m_local_rados,
-                                   false);
+                                   false, true);
   if (r < 0) {
     m_callout_id = m_service_daemon->add_or_update_callout(
       m_local_pool_id, m_callout_id, service_daemon::CALLOUT_LEVEL_ERROR,
@@ -284,7 +284,7 @@ void PoolReplayer<I>::init(const std::string& site_name) {
   r = librbd::util::init_rados(dout_context, m_peer.cluster_name,
                                m_peer.client_name, m_peer.mon_host, m_peer.key,
                                std::string("remote peer ") + stringify(m_peer),
-                               m_args, &m_remote_rados, true);
+                               m_args, &m_remote_rados, true, true);
   if (r < 0) {
     m_callout_id = m_service_daemon->add_or_update_callout(
       m_local_pool_id, m_callout_id, service_daemon::CALLOUT_LEVEL_ERROR,

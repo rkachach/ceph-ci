@@ -270,7 +270,8 @@ int init_rados(CephContext *cct,
                const std::string &description,
                std::vector<const char*>& args,
                std::shared_ptr<librados::Rados> *rados_ref,
-               bool strip_cluster_overrides) {
+               bool strip_cluster_overrides,
+               bool set_global_admin_socket) {
   // NOTE: manually bootstrap a CephContext here instead of via
   // the librados API to avoid mixing global singletons between
   // the librados shared library and the daemon
@@ -342,7 +343,7 @@ int init_rados(CephContext *cct,
     }
   }
 
-  if (!g_ceph_context->_conf->admin_socket.empty()) {
+  if (set_global_admin_socket && !g_ceph_context->_conf->admin_socket.empty()) {
     new_cct->_conf.set_val_or_die("admin_socket",
                                   "$run_dir/$name.$pid.$cluster.$cctid.asok");
   }
