@@ -138,9 +138,20 @@ int create_ioctx(librados::IoCtx& src_io_ctx, const std::string& pool_desc,
                  int64_t pool_id,
                  const std::optional<std::string>& pool_namespace,
                  librados::IoCtx* dst_io_ctx) {
-  auto cct = (CephContext *)src_io_ctx.cct();
-
   librados::Rados rados(src_io_ctx);
+  return create_ioctx(
+          rados, (CephContext *)src_io_ctx.cct(), pool_desc, pool_id,
+          pool_namespace ? pool_namespace :
+                           std::make_optional(src_io_ctx.get_namespace()),
+          src_io_ctx.get_pool_full_try(),
+          dst_io_ctx);
+}
+
+int create_ioctx(librados::Rados& rados, CephContext* cct,
+                 const std::string& pool_desc, int64_t pool_id,
+                 const std::optional<std::string>& pool_namespace,
+                 bool pool_full_try,
+                 librados::IoCtx* dst_io_ctx) {
   int r = rados.ioctx_create2(pool_id, *dst_io_ctx);
   if (r == -ENOENT) {
     ldout(cct, 1) << pool_desc << " pool " << pool_id << " no longer exists"
@@ -152,9 +163,10 @@ int create_ioctx(librados::IoCtx& src_io_ctx, const std::string& pool_desc,
     return r;
   }
 
-  dst_io_ctx->set_namespace(
-    pool_namespace ? *pool_namespace : src_io_ctx.get_namespace());
-  if (src_io_ctx.get_pool_full_try()) {
+  if (pool_namespace) {
+    dst_io_ctx->set_namespace(*pool_namespace);
+  }
+  if (pool_full_try) {
     dst_io_ctx->set_pool_full_try();
   }
   return 0;
