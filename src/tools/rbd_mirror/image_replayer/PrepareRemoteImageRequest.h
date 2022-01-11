@@ -124,6 +124,7 @@ private:
   // journal-based mirroring
   Journaler *m_remote_journaler = nullptr;
   cls::journal::Client m_client;
+  int m_r = 0;
 
   void get_remote_image_id();
   void handle_get_remote_image_id(int r);

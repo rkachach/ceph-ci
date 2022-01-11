@@ -119,8 +119,11 @@ void PrepareRemoteImageRequest<I>::handle_get_mirror_info(int r) {
   } else if (m_promotion_state != librbd::mirror::PROMOTION_STATE_PRIMARY) {
     // no local image and remote isn't primary -- don't sync it
     dout(5) << "remote image is not primary -- not syncing" << dendl;
-    finish(-EREMOTEIO);
-    return;
+    m_r = -EREMOTEIO;
+    if (m_mirror_image.mode != cls::rbd::MIRROR_IMAGE_MODE_JOURNAL) {
+      finish(-EREMOTEIO);
+      return;
+    }
   }
 
   switch (m_mirror_image.mode) {
@@ -175,14 +178,14 @@ void PrepareRemoteImageRequest<I>::handle_get_client(int r) {
     register_client();
   } else if (r < 0) {
     derr << "failed to retrieve client: " << cpp_strerror(r) << dendl;
-    finish(r);
+    finish(m_r != 0 ? m_r : r);
   } else if (!util::decode_client_meta(m_client, &client_meta)) {
     // require operator intervention since the data is corrupt
     finish(-EBADMSG);
   } else {
     // skip registration if it already exists
     finalize_journal_state_builder(m_client.state, client_meta);
-    finish(0);
+    finish(m_r);
   }
 }
 
@@ -213,7 +216,7 @@ void PrepareRemoteImageRequest<I>::handle_register_client(int r) {
   if (r < 0) {
     derr << "failed to register with remote journal: " << cpp_strerror(r)
          << dendl;
-    finish(r);
+    finish(m_r != 0 ? m_r : r);
     return;
   }
 
@@ -223,13 +226,16 @@ void PrepareRemoteImageRequest<I>::handle_register_client(int r) {
   client_meta.state = librbd::journal::MIRROR_PEER_STATE_REPLAYING;
   finalize_journal_state_builder(cls::journal::CLIENT_STATE_CONNECTED,
                                  client_meta);
-  finish(0);
+  finish(m_r);
 }
 
 template <typename I>
 void PrepareRemoteImageRequest<I>::finalize_journal_state_builder(
     cls::journal::ClientState client_state,
     const MirrorPeerClientMeta& client_meta) {
+  if (m_r != 0) {
+    return;
+  }
   journal::StateBuilder<I>* state_builder = nullptr;
   if (*m_state_builder != nullptr) {
     // already verified that it's a matching builder in
