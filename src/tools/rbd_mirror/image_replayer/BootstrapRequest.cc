@@ -311,13 +311,11 @@ void BootstrapRequest<I>::handle_open_local_image(int r) {
     return;
   } else if (r == -EREMOTEIO) {
     dout(10) << "local image is primary -- skipping image replay" << dendl;
-    m_ret_val = r;
-    close_remote_image();
+    finish(r);
     return;
   } else if (r < 0) {
     derr << "failed to open local image: " << cpp_strerror(r) << dendl;
-    m_ret_val = r;
-    close_remote_image();
+    finish(r);
     return;
   }
 
@@ -345,18 +343,16 @@ void BootstrapRequest<I>::handle_prepare_replay(int r) {
     if (r != -EREMOTEIO) {
       derr << "failed to prepare local replay: " << cpp_strerror(r) << dendl;
     }
-    m_ret_val = r;
-    close_remote_image();
+    finish(r);
     return;
   } else if (*m_do_resync) {
     dout(10) << "local image resync requested" << dendl;
-    close_remote_image();
+    finish(m_ret_val);
     return;
   } else if ((*m_state_builder)->is_disconnected()) {
     dout(10) << "client flagged disconnected -- skipping bootstrap" << dendl;
     // The caller is expected to detect disconnect initializing remote journal.
-    m_ret_val = 0;
-    close_remote_image();
+    finish(0);
     return;
   } else if (m_syncing) {
     dout(10) << "local image still syncing to remote image" << dendl;
@@ -364,7 +360,7 @@ void BootstrapRequest<I>::handle_prepare_replay(int r) {
     return;
   }
 
-  close_remote_image();
+  finish(m_ret_val);
 }
 
 template <typename I>
@@ -392,8 +388,7 @@ void BootstrapRequest<I>::handle_create_local_image(int r) {
     } else {
       derr << "failed to create local image: " << cpp_strerror(r) << dendl;
     }
-    m_ret_val = r;
-    close_remote_image();
+    finish(r);
     return;
   }
 
@@ -406,9 +401,8 @@ void BootstrapRequest<I>::image_sync() {
   if (m_canceled) {
     locker.unlock();
 
-    m_ret_val = -ECANCELED;
     dout(10) << "request canceled" << dendl;
-    close_remote_image();
+    finish(-ECANCELED);
     return;
   }
 
@@ -450,36 +444,6 @@ void BootstrapRequest<I>::handle_image_sync(int r) {
       derr << "failed to sync remote image: " << cpp_strerror(r) << dendl;
     }
     m_ret_val = r;
-  }
-
-  close_remote_image();
-}
-
-template <typename I>
-void BootstrapRequest<I>::close_remote_image() {
-  if ((*m_state_builder)->replay_requires_remote_image()) {
-    finish(m_ret_val);
-    return;
-  }
-
-  dout(15) << dendl;
-
-  update_progress("CLOSE_REMOTE_IMAGE");
-
-  auto ctx = create_context_callback<
-    BootstrapRequest<I>,
-    &BootstrapRequest<I>::handle_close_remote_image>(this);
-  ceph_assert(*m_state_builder != nullptr);
-  (*m_state_builder)->close_remote_image(ctx);
-}
-
-template <typename I>
-void BootstrapRequest<I>::handle_close_remote_image(int r) {
-  dout(15) << "r=" << r << dendl;
-
-  if (r < 0) {
-    derr << "error encountered closing remote image: " << cpp_strerror(r)
-         << dendl;
   }
 
   finish(m_ret_val);

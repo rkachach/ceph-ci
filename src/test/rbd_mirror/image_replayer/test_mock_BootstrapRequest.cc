@@ -264,9 +264,6 @@ struct StateBuilder<librbd::MockTestImageCtx> {
   MOCK_CONST_METHOD0(is_local_primary, bool());
   MOCK_CONST_METHOD0(is_linked, bool());
 
-  MOCK_CONST_METHOD0(replay_requires_remote_image, bool());
-  MOCK_METHOD1(close_remote_image, void(Context*));
-
   MOCK_METHOD6(create_local_image_request,
                BaseRequest*(Threads<librbd::MockTestImageCtx>*,
                             librados::IoCtx&,
@@ -392,12 +389,6 @@ public:
       .WillOnce(Return(is_disconnected));
   }
 
-  void expect_replay_requires_remote_image(MockStateBuilder& mock_state_builder,
-                                           bool requires_image) {
-    EXPECT_CALL(mock_state_builder, replay_requires_remote_image())
-      .WillOnce(Return(requires_image));
-  }
-
   void expect_open_image(MockOpenImageRequest &mock_open_image_request,
                          librados::IoCtx &io_ctx, const std::string &image_id,
                          librbd::MockTestImageCtx &mock_image_ctx, int r) {
@@ -422,16 +413,6 @@ public:
           }
           m_threads->work_queue->queue(mock_open_local_image_request.on_finish,
                                        r);
-        }));
-  }
-
-  void expect_close_remote_image(
-      MockStateBuilder& mock_state_builder, int r) {
-    EXPECT_CALL(mock_state_builder, close_remote_image(_))
-      .WillOnce(Invoke([&mock_state_builder, r]
-                       (Context* on_finish) {
-          mock_state_builder.remote_image_ctx = nullptr;
-          on_finish->complete(r);
         }));
   }
 
@@ -556,10 +537,6 @@ TEST_F(TestMockImageReplayerBootstrapRequest, Success) {
   expect_prepare_replay(mock_state_builder, false, false, 0);
   expect_is_disconnected(mock_state_builder, false);
 
-  // close remote image
-  expect_replay_requires_remote_image(mock_state_builder, false);
-  expect_close_remote_image(mock_state_builder, 0);
-
   C_SaferCond ctx;
   MockThreads mock_threads(m_threads);
   MockInstanceWatcher mock_instance_watcher;
@@ -601,10 +578,6 @@ TEST_F(TestMockImageReplayerBootstrapRequest, OpenLocalImageError) {
   expect_open_local_image(mock_open_local_image_request, m_local_io_ctx,
                           mock_local_image_ctx.id, &mock_local_image_ctx,
                           -EINVAL);
-
-  // close remote image
-  expect_replay_requires_remote_image(mock_state_builder, false);
-  expect_close_remote_image(mock_state_builder, 0);
 
   C_SaferCond ctx;
   MockThreads mock_threads(m_threads);
@@ -659,10 +632,6 @@ TEST_F(TestMockImageReplayerBootstrapRequest, OpenLocalImageDNE) {
   expect_prepare_replay(mock_state_builder, false, false, 0);
   expect_is_disconnected(mock_state_builder, false);
 
-  // close remote image
-  expect_replay_requires_remote_image(mock_state_builder, false);
-  expect_close_remote_image(mock_state_builder, 0);
-
   C_SaferCond ctx;
   MockThreads mock_threads(m_threads);
   MockInstanceWatcher mock_instance_watcher;
@@ -705,10 +674,6 @@ TEST_F(TestMockImageReplayerBootstrapRequest, OpenLocalImagePrimary) {
                           mock_local_image_ctx.id, &mock_local_image_ctx,
                           -EREMOTEIO);
 
-  // close remote image
-  expect_replay_requires_remote_image(mock_state_builder, false);
-  expect_close_remote_image(mock_state_builder, 0);
-
   C_SaferCond ctx;
   MockThreads mock_threads(m_threads);
   MockInstanceWatcher mock_instance_watcher;
@@ -745,10 +710,6 @@ TEST_F(TestMockImageReplayerBootstrapRequest, CreateLocalImageError) {
 
   // create local image
   expect_create_local_image(mock_state_builder, "local image id", -EINVAL);
-
-  // close remote image
-  expect_replay_requires_remote_image(mock_state_builder, false);
-  expect_close_remote_image(mock_state_builder, 0);
 
   C_SaferCond ctx;
   MockThreads mock_threads(m_threads);
@@ -794,10 +755,6 @@ TEST_F(TestMockImageReplayerBootstrapRequest, PrepareReplayError) {
   // prepare replay
   expect_prepare_replay(mock_state_builder, false, false, -EINVAL);
 
-  // close remote image
-  expect_replay_requires_remote_image(mock_state_builder, false);
-  expect_close_remote_image(mock_state_builder, 0);
-
   C_SaferCond ctx;
   MockThreads mock_threads(m_threads);
   MockInstanceWatcher mock_instance_watcher;
@@ -841,10 +798,6 @@ TEST_F(TestMockImageReplayerBootstrapRequest, PrepareReplayResyncRequested) {
 
   // prepare replay
   expect_prepare_replay(mock_state_builder, true, false, 0);
-
-  // close remote image
-  expect_replay_requires_remote_image(mock_state_builder, false);
-  expect_close_remote_image(mock_state_builder, 0);
 
   C_SaferCond ctx;
   MockThreads mock_threads(m_threads);
@@ -896,10 +849,6 @@ TEST_F(TestMockImageReplayerBootstrapRequest, PrepareReplaySyncing) {
   MockImageSync mock_image_sync;
   expect_image_sync(mock_image_sync, 0);
 
-  // close remote image
-  expect_replay_requires_remote_image(mock_state_builder, false);
-  expect_close_remote_image(mock_state_builder, 0);
-
   C_SaferCond ctx;
   MockThreads mock_threads(m_threads);
   MockInstanceWatcher mock_instance_watcher;
@@ -944,10 +893,6 @@ TEST_F(TestMockImageReplayerBootstrapRequest, PrepareReplayDisconnected) {
   // prepare replay
   expect_prepare_replay(mock_state_builder, false, false, 0);
   expect_is_disconnected(mock_state_builder, false);
-
-  // close remote image
-  expect_replay_requires_remote_image(mock_state_builder, false);
-  expect_close_remote_image(mock_state_builder, 0);
 
   C_SaferCond ctx;
   MockThreads mock_threads(m_threads);
@@ -998,10 +943,6 @@ TEST_F(TestMockImageReplayerBootstrapRequest, ImageSyncError) {
   MockImageSync mock_image_sync;
   expect_image_sync(mock_image_sync, -EINVAL);
 
-  // close remote image
-  expect_replay_requires_remote_image(mock_state_builder, false);
-  expect_close_remote_image(mock_state_builder, 0);
-
   C_SaferCond ctx;
   MockThreads mock_threads(m_threads);
   MockInstanceWatcher mock_instance_watcher;
@@ -1046,10 +987,6 @@ TEST_F(TestMockImageReplayerBootstrapRequest, ImageSyncCanceled) {
   // prepare replay
   expect_prepare_replay(mock_state_builder, false, true, 0);
   expect_is_disconnected(mock_state_builder, false);
-
-  // close remote image
-  expect_replay_requires_remote_image(mock_state_builder, false);
-  expect_close_remote_image(mock_state_builder, 0);
 
   C_SaferCond ctx;
   MockThreads mock_threads(m_threads);
@@ -1096,58 +1033,6 @@ TEST_F(TestMockImageReplayerBootstrapRequest, CloseRemoteImageError) {
   // prepare replay
   expect_prepare_replay(mock_state_builder, false, false, 0);
   expect_is_disconnected(mock_state_builder, false);
-
-  // attempt to close remote image
-  expect_replay_requires_remote_image(mock_state_builder, false);
-  expect_close_remote_image(mock_state_builder, -EINVAL);
-
-  C_SaferCond ctx;
-  MockThreads mock_threads(m_threads);
-  MockInstanceWatcher mock_instance_watcher;
-  MockBootstrapRequest *request = create_request(
-    &mock_threads, &mock_instance_watcher, "global image id",
-    "local mirror uuid", {{"remote mirror uuid", m_remote_io_ctx}},
-    &mock_pool_meta_cache, &ctx);
-  request->send();
-  ASSERT_EQ(0, ctx.wait());
-}
-
-TEST_F(TestMockImageReplayerBootstrapRequest, ReplayRequiresRemoteImage) {
-  InSequence seq;
-
-  // prepare local image
-  MockPrepareLocalImageRequest mock_prepare_local_image_request;
-  MockStateBuilder mock_state_builder;
-  expect_send(mock_prepare_local_image_request, mock_state_builder,
-              m_local_image_ctx->id, m_local_image_ctx->name, 0);
-  expect_is_local_primary(mock_state_builder, false);
-
-  // prepare remote image
-  MockPoolMetaCache mock_pool_meta_cache{g_ceph_context};
-  expect_remote_pool_meta_cache_get(mock_pool_meta_cache, "remote mirror uuid",
-                                    {"remote mirror uuid", ""}, 0);
-  MockPrepareRemoteImageRequest mock_prepare_remote_image_request;
-  expect_send(mock_prepare_remote_image_request, mock_state_builder,
-              "remote mirror uuid", m_remote_image_ctx->id, 0);
-
-  // open the remote image
-  librbd::MockTestImageCtx mock_remote_image_ctx(*m_remote_image_ctx);
-  MockOpenImageRequest mock_open_image_request;
-  expect_open_image(mock_open_image_request, m_remote_io_ctx,
-                    mock_remote_image_ctx.id, mock_remote_image_ctx, 0);
-
-  // open the local image
-  librbd::MockTestImageCtx mock_local_image_ctx(*m_local_image_ctx);
-  MockOpenLocalImageRequest mock_open_local_image_request;
-  expect_open_local_image(mock_open_local_image_request, m_local_io_ctx,
-                          mock_local_image_ctx.id, &mock_local_image_ctx, 0);
-
-  // prepare replay
-  expect_prepare_replay(mock_state_builder, false, false, 0);
-  expect_is_disconnected(mock_state_builder, false);
-
-  // remote image is left open
-  expect_replay_requires_remote_image(mock_state_builder, true);
 
   C_SaferCond ctx;
   MockThreads mock_threads(m_threads);
