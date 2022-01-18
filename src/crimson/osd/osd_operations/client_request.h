@@ -15,6 +15,7 @@
 namespace crimson::osd {
 class PG;
 class OSD;
+class ShardServices;
 
 class ClientRequest final : public OperationT<ClientRequest>,
                             private CommonClientRequest {
@@ -46,14 +47,20 @@ public:
   void print(std::ostream &) const final;
   void dump_detail(Formatter *f) const final;
 
+  static constexpr bool can_create() { return false; }
+  spg_t get_pgid() const {
+    return m->get_spg();
+  }
+  ConnectionPipeline &get_connection_pipeline();
+  PipelineHandle &get_handle() { return handle; }
+  epoch_t get_epoch() const { return m->get_min_epoch(); }
+
 public:
-  seastar::future<> start();
   bool same_session_and_pg(const ClientRequest& other_op) const;
 
+  seastar::future<seastar::stop_iteration> with_pg(
+    ShardServices &shard_services, Ref<PG> pg);
 private:
-  template <typename FuncT>
-  interruptible_future<> with_sequencer(FuncT&& func);
-
   enum class seq_mode_t {
     IN_ORDER,
     OUT_OF_ORDER
