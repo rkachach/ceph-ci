@@ -427,6 +427,7 @@ void ProtocolV2::prepare_send_message(uint64_t features,
 
 void ProtocolV2::send_message(Message *m) {
   uint64_t f = connection->get_features();
+  ceph_assert(HAVE_FEATURE(f, SERVER_NAUTILUS));
 
   // TODO: Currently not all messages supports reencode like MOSDMap, so here
   // only let fast dispatch support messages prepare message
@@ -2105,6 +2106,7 @@ CtPtr ProtocolV2::handle_server_ident(ceph::bufferlist &payload)
   peer_name = entity_name_t(connection->get_peer_type(), server_ident.gid());
   connection->set_features(server_ident.supported_features() &
                            connection->policy.features_supported);
+  ceph_assert(HAVE_FEATURE(connection->get_features(), SERVER_NAUTILUS));
   peer_global_seq = server_ident.global_seq();
 
   connection->policy.lossy = server_ident.flags() & CEPH_MSG_CONNECT_LOSSY;

@@ -230,6 +230,7 @@ void Message::encode(uint64_t features, int crcflags, bool skip_header_crc)
   // encode and copy out of *m
   if (empty_payload()) {
     ceph_assert(middle.length() == 0);
+    ceph_assert(HAVE_FEATURE(features, SERVER_NAUTILUS));
     encode_payload(features);
 
     if (byte_throttler) {
