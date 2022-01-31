@@ -1061,11 +1061,10 @@ void FSMap::insert(const MDSMap::mds_info_t &new_info)
   mds_roles[new_info.global_id] = FS_CLUSTER_ID_NONE;
   auto& info = standby_daemons[new_info.global_id];
   info = new_info;
-  if (empty.compare(info.compat) == 0) {
-    // bootstrap old compat: boot beacon contains empty compat on old (v16.2.4
-    // or older) MDS.
-    info.compat = MDSMap::get_compat_set_v16_2_4();
-  }
+  /* TODO remove after R is released
+   * Insert INLINE; see comment in MDSMap::decode.
+   */
+  info.compat.incompat.insert(MDS_FEATURE_INCOMPAT_INLINE);
   standby_epochs[new_info.global_id] = epoch;
 }
 
