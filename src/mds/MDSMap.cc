@@ -802,6 +802,7 @@ void MDSMap::sanitize(const std::function<bool(int64_t pool)>& pool_exists)
       it++;
     }
   }
+
 }
 
 void MDSMap::decode(bufferlist::const_iterator& p)
@@ -937,6 +938,13 @@ void MDSMap::decode(bufferlist::const_iterator& p)
     if (empty.compare(info.compat) == 0) {
       /* bootstrap old compat; mds_info_t::decode does not have access to MDSMap */
       info.compat = compat;
+    } else if (compat.incompat.contains(MDS_FEATURE_INCOMPAT_INLINE) &&
+               !info.compat.incompat.contains(MDS_FEATURE_INCOMPAT_INLINE)) {
+      /* fs had inline_data enabled at one point, has been upgraded (v16.2.5+),
+       * and now the MDS infos need to match. This is safe since, presumably, these
+       * MDS are new enough to understand inline data!
+       */
+      info.compat.incompat.insert(MDS_FEATURE_INCOMPAT_INLINE);
     }
   }
 
