@@ -140,6 +140,7 @@ private:
   bool m_canceled = false;
 
   int m_ret_val = 0;
+  int m_r_prepare_remote_image = 0;
 
   std::string m_local_image_name;
   std::string m_prepare_local_image_name;

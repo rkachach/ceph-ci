@@ -693,7 +693,7 @@ TYPED_TEST(TestImageReplayer, BootstrapDemoted)
   this->create_replayer();
   C_SaferCond cond;
   this->m_replayer->start(&cond);
-  ASSERT_EQ(-ENOENT, cond.wait());
+  ASSERT_EQ(-EREMOTEIO, cond.wait());
   ASSERT_TRUE(this->m_replayer->is_stopped());
 }
 

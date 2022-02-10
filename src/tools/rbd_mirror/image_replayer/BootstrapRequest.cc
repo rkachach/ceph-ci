@@ -166,6 +166,12 @@ void BootstrapRequest<I>::prepare_remote_image() {
 
   if (m_it_peer == m_peers.end()) {
     dout(10) << "no peer left" << dendl;
+
+    if (m_r_prepare_remote_image != -ENOENT && m_r_prepare_remote_image != 0) {
+      finish(m_r_prepare_remote_image);
+      return;
+    }
+
     auto state_builder = *m_state_builder;
 
     if (state_builder == nullptr) {
@@ -200,6 +206,7 @@ void BootstrapRequest<I>::prepare_remote_image() {
 template <typename I>
 void BootstrapRequest<I>::handle_prepare_remote_image(int r) {
   dout(10) << "r=" << r << dendl;
+  m_r_prepare_remote_image = r;
 
   auto state_builder = *m_state_builder;
   ceph_assert(state_builder == nullptr ||
