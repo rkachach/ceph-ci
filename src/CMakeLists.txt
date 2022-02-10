@@ -526,8 +526,9 @@ endif()
 
 add_library(common STATIC ${ceph_common_objs})
 target_link_libraries(common ${ceph_common_deps})
+add_dependencies(common legacy-option-headers)
 if(WITH_JAEGER)
-add_dependencies(common legacy-option-headers jaeger_base)
+add_dependencies(common jaeger_base)
 endif()
 
 if (WIN32)
@@ -542,10 +543,11 @@ target_link_libraries(ceph-common ${ceph_common_deps})
 if(ENABLE_COVERAGE)
   target_link_libraries(ceph-common gcov)
 endif(ENABLE_COVERAGE)
+
 add_dependencies(ceph-common legacy-option-headers)
 
 if(WITH_JAEGER)
-add_dependencies(ceph-common legacy-option-headers jaeger_base)
+add_dependencies(ceph-common jaeger_base)
 endif()
 
 # appease dpkg-shlibdeps
