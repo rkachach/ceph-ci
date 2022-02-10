@@ -40,7 +40,7 @@ function(build_opentelemetry)
   endif()
 
   if(WITH_SYSTEM_BOOST)
-    list(APPEND opentelemetry_CMAKE_ARGS -DBOOST_ROOT=/opt/ceph)
+    list(APPEND opentelemetry_CMAKE_ARGS -DBOOST_ROOT=${BOOST_ROOT})
   else()
     list(APPEND dependencies Boost)
     list(APPEND opentelemetry_CMAKE_ARGS -DBoost_INCLUDE_DIR=${CMAKE_BINARY_DIR}/boost/include)
