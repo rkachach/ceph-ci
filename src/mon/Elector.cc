@@ -1,4 +1,4 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*- 
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 /*
  * Ceph - scalable distributed file system
@@ -7,9 +7,9 @@
  *
  * This is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License version 2.1, as published by the Free Software 
+ * License version 2.1, as published by the Free Software
  * Foundation.  See file COPYING.
- * 
+ *
  */
 
 #include "Elector.h"
@@ -158,7 +158,7 @@ void Elector::propose_to_peers(epoch_t e, bufferlist& logic_bl)
     m->mon_features = ceph::features::mon::get_supported();
     m->mon_release = ceph_release();
     mon->send_mon_message(m, i);
-  }  
+  }
 }
 
 void Elector::_start()
@@ -181,7 +181,7 @@ void Elector::_defer_to(int who)
   mon->collect_metadata(&m->metadata);
 
   mon->send_mon_message(m, who);
-  
+
   // set a timer
   reset_timer(1.0);  // give the leader some extra time to declare victory
 }
@@ -246,7 +246,7 @@ void Elector::message_victory(const std::set<int>& quorum)
   }
 
   cancel_timer();
-  
+
 
   // tell everyone!
   for (set<int>::iterator p = quorum.begin();
@@ -526,11 +526,11 @@ void Elector::ping_check(int peer)
 
 void Elector::begin_dead_ping(int peer)
 {
-  dout(20) << __func__ << " to peer " << peer << dendl;  
+  dout(20) << __func__ << " to peer " << peer << dendl;
   if (dead_pinging.count(peer)) {
     return;
   }
-  
+
   live_pinging.erase(peer);
   dead_pinging.insert(peer);
   mon->timer.add_event_after(ping_timeout,
@@ -601,14 +601,14 @@ void Elector::dispatch(MonOpRequestRef op)
   ceph_assert(op->is_type_election_or_ping());
 
   switch (op->get_req()->get_type()) {
-    
+
   case MSG_MON_ELECTION:
     {
       if (!logic.participating) {
         return;
       }
       if (op->get_req()->get_source().num() >= mon->monmap->size()) {
-	dout(5) << " ignoring bogus election message with bad mon rank " 
+	dout(5) << " ignoring bogus election message with bad mon rank "
 		<< op->get_req()->get_source() << dendl;
 	return;
       }
@@ -617,7 +617,7 @@ void Elector::dispatch(MonOpRequestRef op)
 
       // assume an old message encoding would have matched
       if (em->fsid != mon->monmap->fsid) {
-	dout(0) << " ignoring election msg fsid " 
+	dout(0) << " ignoring election msg fsid "
 		<< em->fsid << " != " << mon->monmap->fsid << dendl;
 	return;
       }
@@ -632,7 +632,7 @@ void Elector::dispatch(MonOpRequestRef op)
       peermap.decode(em->monmap_bl);
       if (peermap.epoch > mon->monmap->epoch) {
 	dout(0) << em->get_source_inst() << " has newer monmap epoch " << peermap.epoch
-		<< " > my epoch " << mon->monmap->epoch 
+		<< " > my epoch " << mon->monmap->epoch
 		<< ", taking it"
 		<< dendl;
 	mon->monmap->decode(em->monmap_bl);
@@ -648,7 +648,7 @@ void Elector::dispatch(MonOpRequestRef op)
       }
       if (peermap.epoch < mon->monmap->epoch) {
 	dout(0) << em->get_source_inst() << " has older monmap epoch " << peermap.epoch
-		<< " < my epoch " << mon->monmap->epoch 
+		<< " < my epoch " << mon->monmap->epoch
 		<< dendl;
       }
 
@@ -694,8 +694,8 @@ void Elector::dispatch(MonOpRequestRef op)
   case MSG_MON_PING:
     handle_ping(op);
     break;
-    
-  default: 
+
+  default:
     ceph_abort();
   }
 }
