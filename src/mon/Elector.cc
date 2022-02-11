@@ -506,6 +506,14 @@ void Elector::ping_check(int peer)
     return;
   }
 
+  // sanity check to prevent assertion failure
+  int ranks_size = mon->monmap->ranks.size();
+  if (peer >= ranks_size) {
+    dout(20) << "peer >= ranks_size" << dendl;
+    begin_dead_ping(peer);
+    return;
+  }
+
   if (acked_ping == newest_ping) {
     send_peer_ping(peer, &now);
   }
@@ -518,6 +526,7 @@ void Elector::ping_check(int peer)
 
 void Elector::begin_dead_ping(int peer)
 {
+  dout(20) << __func__ << " to peer " << peer << dendl;  
   if (dead_pinging.count(peer)) {
     return;
   }
