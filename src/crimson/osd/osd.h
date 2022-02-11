@@ -245,6 +245,42 @@ public:
   Ref<PG> get_pg(spg_t pgid);
   seastar::future<> send_beacon();
 
+  template <typename T, typename... Args>
+  auto start_pg_operation(Args&&... args) {
+    auto op = shard_services.registry.create_operation<T>(
+      std::forward<Args>(args)...);
+    auto &opref = *op;
+    auto fut = seastar::repeat([this, &opref] {
+      return opref.with_blocking_future(
+	opref.get_handle().enter(opref.get_connection_pipeline().await_active)
+      ).then([this, &opref] {
+	return state.when_active();
+      }).then([this, &opref] {
+	return opref.with_blocking_future(
+	  opref.get_handle().enter(opref.get_connection_pipeline().await_map));
+      }).then([this, &opref] {
+	return opref.with_blocking_future(
+	  osdmap_gate.wait_for_map(opref.get_epoch()));
+      }).then([this, &opref](auto epoch) {
+	return opref.with_blocking_future(
+	  opref.get_handle().enter(opref.get_connection_pipeline().get_pg));
+      }).then([this, &opref] {
+	if constexpr (opref.can_create()) {
+	  return opref.with_blocking_future(
+	    get_or_create_pg(
+	      opref.get_pgid(), opref.get_epoch(), std::move(opref.get_create_info())));
+	} else {
+	  return opref.with_blocking_future(wait_for_pg(opref.get_pgid()));
+	}
+      }).then([this, &opref](Ref<PG> pgref) {
+	return opref.with_pg(shard_services, pgref);
+      });
+    }).then([op] { /* Retain refcount on op until completion */ });
+
+    return std::make_pair(std::move(op), std::move(fut));
+  }
+
+
 private:
   LogClient log_client;
   LogChannelRef clog;
