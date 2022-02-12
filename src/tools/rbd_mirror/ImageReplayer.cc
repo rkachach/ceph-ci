@@ -862,9 +862,11 @@ void ImageReplayer<I>::set_mirror_image_status_update(
   }
 
   dout(15) << "status=" << status << dendl;
+  dout(15) << "XXXMG: local_status_updater::set_mirror_image_status " << m_global_image_id << " force " << force << dendl;
   m_local_status_updater->set_mirror_image_status(m_global_image_id, status,
                                                   force);
   if (m_remote_image_peer.mirror_status_updater != nullptr) {
+    dout(15) << "XXXMG: remote_status_updater::set_mirror_image_status " << m_global_image_id << " force " << force << dendl;
     m_remote_image_peer.mirror_status_updater->set_mirror_image_status(
       m_global_image_id, status, force);
   }

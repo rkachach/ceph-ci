@@ -184,6 +184,7 @@ void MirrorStatusUpdater<I>::set_mirror_image_status(
 
   m_global_image_status[global_image_id] = mirror_image_site_status;
   if (immediate_update) {
+    dout(15) << "XXXMG: m_update_global_image_ids.insert " << global_image_id << dendl;
     m_update_global_image_ids.insert(global_image_id);
     queue_update_task(std::move(locker));
   }
@@ -223,6 +224,7 @@ bool MirrorStatusUpdater<I>::try_remove_mirror_image_status(
       ((m_update_in_progress || m_update_requested) &&
        m_update_global_image_ids.count(global_image_id) > 0)) {
     // if update is scheduled/in-progress, wait for it to complete
+    dout(15) << "XXXMG: wait for in-progress update to complete " << dendl;
     on_finish = new LambdaContext(
       [this, global_image_id, queue_update, immediate_update,
              on_finish](int r) {
@@ -235,8 +237,10 @@ bool MirrorStatusUpdater<I>::try_remove_mirror_image_status(
     return false;
   }
 
+  dout(15) << "XXXMG: m_global_image_status.erase " << global_image_id << dendl;
   m_global_image_status.erase(global_image_id);
   if (queue_update) {
+    dout(15) << "XXXMG: m_update_global_image_ids.insert " << global_image_id << dendl;
     m_update_global_image_ids.insert(global_image_id);
     if (immediate_update) {
       queue_update_task(std::move(locker));
@@ -269,6 +273,7 @@ void MirrorStatusUpdater<I>::handle_timer_task(int r) {
 
   std::unique_lock locker(m_lock);
   for (auto& pair : m_global_image_status) {
+    dout(15) << "XXXMG: m_update_global_image_ids.insert " << pair.first << dendl;
     m_update_global_image_ids.insert(pair.first);
   }
 
@@ -287,6 +292,7 @@ void MirrorStatusUpdater<I>::queue_update_task(
       dout(10) << "deferring update due to in-flight ops" << dendl;
       m_update_requested = true;
     }
+    dout(15) << "XXXMG: return" << dendl;
     return;
   }
 
@@ -320,6 +326,7 @@ void MirrorStatusUpdater<I>::update_task(int r) {
     MirrorStatusUpdater<I>,
     &MirrorStatusUpdater<I>::handle_update_task>(this);
   if (updating_global_image_ids.empty()) {
+    dout(15) << "XXXMG: updating_global_image_ids is empty" << dendl;
     ctx->complete(0);
     return;
   }
@@ -336,13 +343,16 @@ void MirrorStatusUpdater<I>::update_task(int r) {
       auto& global_image_id = *it;
       ++it;
 
+      dout(15) << "XXXMG: " << global_image_id << dendl;
       auto status_it = global_image_status.find(global_image_id);
       if (status_it == global_image_status.end()) {
+        dout(15) << "XXXMG: cls_client::mirror_image_status_remove " << global_image_id << dendl;
         librbd::cls_client::mirror_image_status_remove(&op, global_image_id);
         ++op_count;
         continue;
       }
 
+      dout(15) << "XXXMG: cls_client::mirror_image_status_set " << global_image_id << dendl;
       status_it->second.mirror_uuid = m_local_mirror_uuid;
       librbd::cls_client::mirror_image_status_set(&op, global_image_id,
                                                   status_it->second);
