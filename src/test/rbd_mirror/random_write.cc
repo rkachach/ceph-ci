@@ -62,7 +62,7 @@ struct rbd_bencher {
     librbd::RBD::AioCompletion *c =
       new librbd::RBD::AioCompletion((void *)this, rbd_bencher_completion);
     image->aio_write2(off, len, bl, c, op_flags);
-    //cout << "start " << c << " at " << off << "~" << len << std::endl;
+    std::cerr << "XXXMG: start " << c << " at " << off << "~" << len << std::endl;
     return true;
   }
 
@@ -79,7 +79,7 @@ struct rbd_bencher {
 void rbd_bencher_completion(void *vc, void *pc) {
   librbd::RBD::AioCompletion *c = (librbd::RBD::AioCompletion *)vc;
   rbd_bencher *b = static_cast<rbd_bencher *>(pc);
-  //cout << "complete " << c << std::endl;
+  std::cerr << "XXXMG: complete " << c << std::endl;
   int ret = c->get_return_value();
   if (ret != 0) {
     std::cout << "write error: " << cpp_strerror(ret) << std::endl;
