@@ -3458,7 +3458,6 @@ int OSD::init()
   std::lock_guard lock(osd_lock);
   if (is_stopping())
     return 0;
-  tracing::osd::tracer.init("osd");
   tick_timer.init();
   tick_timer_without_osd_lock.init();
   service.recovery_request_timer.init();

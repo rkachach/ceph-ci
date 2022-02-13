@@ -6,7 +6,11 @@
 namespace tracing {
 namespace osd {
 
+#ifdef HAVE_JAEGER
+thread_local tracing::Tracer tracer("osd");
+#else // !HAVE_JAEGER
 tracing::Tracer tracer;
+#endif
 
 } // namespace osd
 } // namespace tracing
