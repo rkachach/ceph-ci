@@ -12,7 +12,8 @@ function(build_opentelemetry)
   set(opentelemetry_CMAKE_ARGS -DCMAKE_POSITION_INDEPENDENT_CODE=ON
                                -DWITH_JAEGER=ON
                                -DBUILD_TESTING=OFF
-                               -DWITH_EXAMPLES=OFF)
+                               -DWITH_EXAMPLES=OFF
+                               -DCMAKE_BUILD_TYPE=Release)
 
   set(opentelemetry_libs
       ${opentelemetry_BINARY_DIR}/sdk/src/trace/libopentelemetry_trace.a
