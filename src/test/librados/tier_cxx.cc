@@ -5659,6 +5659,9 @@ TEST_F(LibRadosTwoPoolsPP, TierFlushDuringFlush) {
     ASSERT_EQ(0, ioctx.operate("bar", &op));
   }
 
+  // wait for maps to settle
+  cluster.wait_for_latest_osdmap();
+
   // set-chunk to set manifest object
   {
     ObjectReadOperation op;

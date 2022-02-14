@@ -10593,6 +10593,8 @@ hobject_t PrimaryLogPG::get_fpoid_from_chunk(const hobject_t soid, bufferlist& c
   pg_t raw_pg;
   object_locator_t oloc(soid);
   oloc.pool = pool.info.get_dedup_tier();
+  // check if dedup_tier isn't set
+  ceph_assert(oloc.pool > 0);
   get_osdmap()->object_locator_to_pg(fp_oid, oloc, raw_pg);
   hobject_t target(fp_oid, oloc.key, snapid_t(),
 		    raw_pg.ps(), raw_pg.pool(),
