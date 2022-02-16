@@ -4307,7 +4307,6 @@ struct pg_log_entry_t {
   bool invalid_hash; // only when decoding sobject_t based entries
   bool invalid_pool; // only when decoding pool-less hobject based entries
   ObjectCleanRegions clean_regions;
-
   pg_log_entry_t()
    : user_version(0), return_code(0), op(0),
      invalid_hash(false), invalid_pool(false) {
@@ -4383,7 +4382,28 @@ struct pg_log_entry_t {
   void decode(ceph::buffer::list::const_iterator &bl);
   void dump(ceph::Formatter *f) const;
   static void generate_test_instances(std::list<pg_log_entry_t*>& o);
-
+  
+  size_t encode_size() const {
+    size_t snaps_size = 0;
+    for (unsigned i = 0; i < snaps.length(); i++) {
+      snaps_size += sizeof(snaps[i]);
+    }
+    return sizeof(op) +
+           sizeof(soid) +
+           sizeof(version) +
+            sizeof(prior_version) +
+            sizeof(reverting_to) +
+            sizeof(reqid) +
+            sizeof(mtime) +
+            snaps_size +
+            sizeof(user_version) +
+            sizeof(mod_desc) +
+            extra_reqids.size() * sizeof(std::pair<osd_reqid_t, version_t>) +
+            extra_reqid_return_codes.size() * sizeof(uint32_t) +
+            sizeof(clean_regions) +
+            sizeof(return_code) +
+            op_returns.size() * sizeof(pg_log_op_return_item_t);
+  }
 };
 WRITE_CLASS_ENCODER(pg_log_entry_t)
 
@@ -4428,7 +4448,14 @@ struct pg_log_dup_t {
   bool operator!=(const pg_log_dup_t &rhs) const {
     return !(*this == rhs);
   }
+  size_t encode_size() const {
+    return sizeof(reqid) +
+           sizeof(version) +
+           sizeof(user_version) +
+           sizeof(return_code) +
+           op_returns.size() * sizeof(pg_log_op_return_item_t);
 
+  }
   friend std::ostream& operator<<(std::ostream& out, const pg_log_dup_t& e);
 };
 WRITE_CLASS_ENCODER(pg_log_dup_t)
