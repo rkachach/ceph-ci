@@ -2294,6 +2294,8 @@ uint64_t BlueFS::_estimate_log_size_N()
 
 void BlueFS::compact_log()/*_LNF_LD_NF_D*/
 {
+  dout(10) << __func__ << "::cct->_conf->bluefs_replay_recovery_disable_compact=" << cct->_conf->bluefs_replay_recovery_disable_compact << dendl;
+  dout(10) << __func__ << "::cct->_conf->bluefs_compact_log_sync=" << cct->_conf->bluefs_compact_log_sync << dendl;
   if (!cct->_conf->bluefs_replay_recovery_disable_compact) {
     if (cct->_conf->bluefs_compact_log_sync) {
       _compact_log_sync_LNF_LD();
