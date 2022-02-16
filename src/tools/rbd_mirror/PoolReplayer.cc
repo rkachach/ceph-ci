@@ -401,28 +401,37 @@ void PoolReplayer<I>::init(const std::string& site_name) {
     stringify(m_local_io_ctx.get_instance_id()));
 
   m_pool_replayer_thread.create("pool replayer");
+
+  dout(10) << "XXXMG: " << "return" << dendl;
 }
 
 template <typename I>
 void PoolReplayer<I>::shut_down() {
+  dout(10) << "XXXMG: " << dendl;
   {
     std::lock_guard l{m_lock};
     m_stopping = true;
     m_cond.notify_all();
   }
   if (m_pool_replayer_thread.is_started()) {
+    dout(10) << "XXXMG: m_pool_replayer_thread.join" << dendl;
     m_pool_replayer_thread.join();
+    dout(10) << "XXXMG: joined" << dendl;
   }
 
   if (m_leader_watcher) {
+    dout(10) << "XXXMG: m_leader_watcher->shut_down" << dendl;
     m_leader_watcher->shut_down();
+    dout(10) << "XXXMG: m_leader_watcher->shut_down: done" << dendl;
   }
   m_leader_watcher.reset();
 
   if (m_default_namespace_replayer) {
     C_SaferCond on_shut_down;
+    dout(10) << "XXXMG: shutdown default namespace replayer" << dendl;
     m_default_namespace_replayer->shut_down(&on_shut_down);
     on_shut_down.wait();
+    dout(10) << "XXXMG: done" << dendl;
   }
   m_default_namespace_replayer.reset();
 
@@ -442,6 +451,7 @@ void PoolReplayer<I>::shut_down() {
 
   m_local_rados.reset();
   m_remote_rados.reset();
+  dout(10) << "XXXMG: return" << dendl;
 }
 
 template <typename I>
@@ -575,6 +585,7 @@ void PoolReplayer<I>::run() {
   dout(20) << dendl;
 
   while (true) {
+    dout(10) << "XXXMG: start new iteration" << dendl;
     std::string asok_hook_name = m_local_io_ctx.get_pool_name() + " " +
                                  m_peer.cluster_name;
     if (m_asok_hook_name != asok_hook_name || m_asok_hook == nullptr) {
@@ -585,18 +596,22 @@ void PoolReplayer<I>::run() {
 						       m_asok_hook_name, this);
     }
 
+    dout(10) << "XXXMG: update_namespace_replayers" << dendl;
     with_namespace_replayers([this]() { update_namespace_replayers(); });
+    dout(10) << "XXXMG: update_namespace_replayers done" << dendl;
 
     std::unique_lock locker{m_lock};
 
     if (m_leader_watcher->is_blocklisted() ||
         m_default_namespace_replayer->is_blocklisted()) {
+      dout(10) << "XXXMG: stopping because blocklisted" << dendl;
       m_blocklisted = true;
       m_stopping = true;
     }
 
     for (auto &it : m_namespace_replayers) {
       if (it.second->is_blocklisted()) {
+        dout(10) << "XXXMG: stopping because ns blocklisted" << dendl;
         m_blocklisted = true;
         m_stopping = true;
         break;
@@ -604,19 +619,24 @@ void PoolReplayer<I>::run() {
     }
 
     if (m_stopping) {
+      dout(10) << "XXXMG: m_stopping => break" << dendl;
       break;
     }
 
     auto seconds = g_ceph_context->_conf.get_val<uint64_t>(
         "rbd_mirror_pool_replayers_refresh_interval");
+    dout(10) << "XXXMG: waiting " << seconds << " seconds" << dendl;
     m_cond.wait_for(locker, ceph::make_timespan(seconds));
   }
 
   // shut down namespace replayers
+  dout(10) << "XXXMG: shut down namespace replayers" << dendl;
   with_namespace_replayers([this]() { update_namespace_replayers(); });
 
+  dout(10) << "XXXMG: deleting asok" << dendl;
   delete m_asok_hook;
   m_asok_hook = nullptr;
+  dout(10) << "XXXMG: return" << dendl;
 }
 
 template <typename I>
@@ -625,6 +645,8 @@ void PoolReplayer<I>::update_namespace_replayers() {
 
   ceph_assert(ceph_mutex_is_locked(m_lock));
 
+  dout(10) << "XXXMG: m_stopping " << m_stopping << dendl;
+
   std::set<std::string> mirroring_namespaces;
   if (!m_stopping) {
     int r = list_mirroring_namespaces(&mirroring_namespaces);
@@ -632,14 +654,17 @@ void PoolReplayer<I>::update_namespace_replayers() {
       return;
     }
   }
+  dout(10) << "XXXMG: mirroring_namespaces " << mirroring_namespaces << dendl;
 
   auto cct = reinterpret_cast<CephContext *>(m_local_io_ctx.cct());
   C_SaferCond cond;
   auto gather_ctx = new C_Gather(cct, &cond);
   for (auto it = m_namespace_replayers.begin();
        it != m_namespace_replayers.end(); ) {
+    dout(10) << "XXXMG: checking " << it->first << dendl;
     auto iter = mirroring_namespaces.find(it->first);
     if (iter == mirroring_namespaces.end()) {
+      dout(10) << "XXXMG: removing " << it->first << dendl;
       auto namespace_replayer = it->second;
       auto on_shut_down = new LambdaContext(
         [namespace_replayer, ctx=gather_ctx->new_sub()](int r) {
@@ -655,7 +680,10 @@ void PoolReplayer<I>::update_namespace_replayers() {
     }
   }
 
+  dout(10) << "XXXMG: mirroring_namespaces (after remove loop) " << mirroring_namespaces << dendl;
+
   for (auto &name : mirroring_namespaces) {
+    dout(10) << "XXXMG: creating " << name << dendl;
     auto namespace_replayer = NamespaceReplayer<I>::create(
         name, m_local_io_ctx, m_remote_io_ctx, m_local_mirror_uuid, m_peer.uuid,
         m_remote_pool_meta, m_threads, m_image_sync_throttler.get(),
@@ -671,6 +699,7 @@ void PoolReplayer<I>::update_namespace_replayers() {
             delete namespace_replayer;
             mirroring_namespaces.erase(name);
           } else {
+            dout(10) << "XXXMG: created ns " << name << dendl;
             m_namespace_replayers[name] = namespace_replayer;
             m_service_daemon->add_namespace(m_local_pool_id, name);
           }
@@ -681,11 +710,14 @@ void PoolReplayer<I>::update_namespace_replayers() {
 
   gather_ctx->activate();
 
+  dout(10) << "XXXMG: waiting for create/remove complete" << dendl;
   m_lock.unlock();
   cond.wait();
   m_lock.lock();
+  dout(10) << "XXXMG: create/remove complete" << dendl;
 
   if (m_leader) {
+    dout(10) << "XXXMG: acquire leader" << dendl;
     C_SaferCond acquire_cond;
     auto acquire_gather_ctx = new C_Gather(cct, &acquire_cond);
 
@@ -694,9 +726,13 @@ void PoolReplayer<I>::update_namespace_replayers() {
     }
     acquire_gather_ctx->activate();
 
+    dout(10) << "XXXMG: waiting for acquire leader complete" << dendl;
     m_lock.unlock();
     acquire_cond.wait();
     m_lock.lock();
+    dout(10) << "XXXMG:acquire leader complete" << dendl;
+
+    dout(10) << "XXXMG: add instancess" << dendl;
 
     std::vector<std::string> instance_ids;
     m_leader_watcher->list_instances(&instance_ids);
@@ -707,9 +743,11 @@ void PoolReplayer<I>::update_namespace_replayers() {
         // acuire leader for this namespace replayer failed
         continue;
       }
+      dout(10) << "XXXMG: add instances " << instance_ids << " to " << name << dendl;
       it->second->handle_instances_added(instance_ids);
     }
   } else {
+    dout(10) << "XXXMG: update leader_instance_id" << dendl;
     std::string leader_instance_id;
     if (m_leader_watcher->get_leader_instance_id(&leader_instance_id)) {
       for (auto &name : mirroring_namespaces) {
@@ -717,6 +755,7 @@ void PoolReplayer<I>::update_namespace_replayers() {
       }
     }
   }
+  dout(10) << "XXXMG: return" << dendl;
 }
 
 template <typename I>
@@ -768,6 +807,7 @@ void PoolReplayer<I>::reopen_logs()
 template <typename I>
 void PoolReplayer<I>::namespace_replayer_acquire_leader(const std::string &name,
                                                         Context *on_finish) {
+  dout(10) << "XXXMG: " << name << dendl;
   ceph_assert(ceph_mutex_is_locked(m_lock));
 
   auto it = m_namespace_replayers.find(name);
@@ -791,10 +831,12 @@ void PoolReplayer<I>::namespace_replayer_acquire_leader(const std::string &name,
                 delete namespace_replayer;
                 on_finish->complete(r);
               });
+          dout(10) << "XXXMG: namespace_replayer_acquire_leader failed => shutdown" << name << dendl;
           m_service_daemon->remove_namespace(m_local_pool_id, name);
           namespace_replayer->shut_down(on_shut_down);
           return;
         }
+        dout(10) << "XXXMG: namespace_replayer_acquire_leader successfully complete" << name << dendl;
         on_finish->complete(0);
       });
 
@@ -995,6 +1037,7 @@ void PoolReplayer<I>::handle_post_acquire_leader(Context *on_finish) {
                 m_leader = true;
               }
               on_finish->complete(r);
+              dout(10) << "XXXMG: handle_post_acquire_leader complete" << dendl;
             });
 
         auto cct = reinterpret_cast<CephContext *>(m_local_io_ctx.cct());
