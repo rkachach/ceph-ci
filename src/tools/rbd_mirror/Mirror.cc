@@ -701,6 +701,7 @@ void Mirror::update_pool_replayers(const PoolPeers &pool_peers,
   // remove stale pool replayers before creating new pool replayers
   for (auto it = m_pool_replayers.begin(); it != m_pool_replayers.end();) {
     auto &peer = it->first.second;
+    dout(20) << "XXXMG: checking stale pool replayer for " << peer << dendl;
     auto pool_peer_it = pool_peers.find(it->first.first);
     if (pool_peer_it == pool_peers.end() ||
         pool_peer_it->second.find(peer) == pool_peer_it->second.end()) {
@@ -714,11 +715,14 @@ void Mirror::update_pool_replayers(const PoolPeers &pool_peers,
   }
 
   for (auto &kv : pool_peers) {
+    dout(20) << "XXXMG: updating pool replayers for " << kv.first << dendl;
     for (auto &peer : kv.second) {
       PoolPeer pool_peer(kv.first, peer);
+      dout(20) << "XXXMG: pool_peer " << pool_peer << dendl;
 
       auto pool_replayers_it = m_pool_replayers.find(pool_peer);
       if (pool_replayers_it != m_pool_replayers.end()) {
+        dout(20) << "XXXMG: found pool replayer for " << peer << dendl;
         auto& pool_replayer = pool_replayers_it->second;
         if (!m_site_name.empty() && !site_name.empty() &&
             m_site_name != site_name) {
@@ -737,6 +741,8 @@ void Mirror::update_pool_replayers(const PoolPeers &pool_peers,
           // TODO: make async
           pool_replayer->shut_down();
           pool_replayer->init(site_name);
+        } else {
+          dout(20) << "XXXMG: nothing to do for " << peer << dendl;
         }
       } else {
         dout(20) << "starting pool replayer for " << peer << dendl;
