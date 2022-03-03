@@ -178,11 +178,12 @@ class CephFSMount(object):
         log.info('Ready to start {}...'.format(type(self).__name__))
 
     def _create_mntpt(self):
-        self.client_remote.run(args=f'mkdir -p -v {self.hostfs_mntpt}',
+        if not self.is_mounted():
+            self.client_remote.run(args=f'mkdir -p -v {self.hostfs_mntpt}',
                                timeout=60)
-        # Use 0000 mode to prevent undesired modifications to the mountpoint on
-        # the local file system.
-        self.client_remote.run(args=f'chmod 0000 {self.hostfs_mntpt}',
+            # Use 0000 mode to prevent undesired modifications to the mountpoint on
+            # the local file system.
+            self.client_remote.run(args=f'chmod 0000 {self.hostfs_mntpt}',
                                timeout=60)
 
     @property
