@@ -178,14 +178,24 @@ class CephFSMount(object):
         log.info('Ready to start {}...'.format(type(self).__name__))
 
     def _create_mntpt(self):
+        ls_str1 = self.client_remote.sh("sudo ls -lart " + self.hostfs_mntpt, stdout=StringIO(), timeout=(15*60)).strip()
+        log.info("creating directory PPPP = {0}".format(ls_str1))
+
         self.client_remote.run(args=f'mkdir -p -v {self.hostfs_mntpt}',
                                timeout=60)
+
+        ls_str2 = self.client_remote.sh("sudo ls -lart " + self.hostfs_mntpt, stdout=StringIO(), timeout=(15*60)).strip()
+        log.info("created directory QQQQ = {0}".format(ls_str2))
+
         # Use 0000 mode to prevent undesired modifications to the mountpoint on
         # the local file system.
         self.client_remote.run(
                 args=['sudo', 'chmod', '0000', self.hostfs_mntpt],
                 stderr=StringIO(), stdout=StringIO(),
                 timeout=60, omit_sudo=False)
+
+        ls_str3 = self.client_remote.sh("sudo ls -lart " + self.hostfs_mntpt, stdout=StringIO(), timeout=(15*60)).strip()
+        log.info("chmod directory RRRR = {0}".format(ls_str3))
 
     @property
     def _nsenter_args(self):

@@ -82,6 +82,9 @@ class FuseMount(CephFSMount):
         pre_mount_conns = self._list_fuse_conns()
         log.info("Pre-mount connections: {0}".format(pre_mount_conns))
 
+        ls_str4 = self.client_remote.sh("sudo ls -lart " + self.hostfs_mntpt, stdout=StringIO(), timeout=(15*60)).strip()
+        log.info("before running command SSSS = {0}".format(ls_str4))
+
         self.fuse_daemon = self.client_remote.run(
             args=mount_cmd,
             cwd=self._mount_cmd_cwd,
@@ -91,6 +94,9 @@ class FuseMount(CephFSMount):
             stderr=mountcmd_stderr,
             wait=False
         )
+
+        ls_str5 = self.client_remote.sh("sudo ls -lart " + self.hostfs_mntpt, stdout=StringIO(), timeout=(15*60)).strip()
+        log.info("after running command TTTT = {0}".format(ls_str5))
 
         return self._wait_and_record_our_fuse_conn(
             check_status, pre_mount_conns, mountcmd_stdout, mountcmd_stderr)
