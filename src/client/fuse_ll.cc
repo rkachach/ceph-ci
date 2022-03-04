@@ -1380,11 +1380,6 @@ int CephFuse::Handle::init(int argc, const char *argv[])
   struct fuse_args a = FUSE_ARGS_INIT(newargc, (char**)newargv);
   args = a;  // Roundabout construction b/c FUSE_ARGS_INIT is for initialization not assignment
 
-  for (int i = 0; i < args.argc; i++)
-  {
-    derr << "NNNN arg[" << i << "] = " << args.argv[i] << dendl;
-  }
-
 #if FUSE_VERSION >= FUSE_MAKE_VERSION(3, 0)
   if (fuse_parse_cmdline(&args, &opts) == -1) {
 #else

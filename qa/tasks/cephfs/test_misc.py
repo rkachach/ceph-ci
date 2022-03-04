@@ -33,14 +33,6 @@ class TestMisc(CephFSTestCase):
         if not isinstance(self.mount_a, FuseMount):
             self.skipTest("Require FUSE client")
 
-        ls_mount_a = self.mount_a.client_remote.sh("sudo ls -lart " + self.mount_a.hostfs_mntpt,
-                stdout=StringIO(), timeout=(15*60)).strip()
-        log.info("running ls command on mount_a mountpoint = {0}".format(ls_mount_a))
-
-        ls_mount_b = self.mount_b.client_remote.sh("sudo ls -lart " + self.mount_b.hostfs_mntpt,
-                stdout=StringIO(), timeout=(15*60)).strip()
-        log.info("running ls command on mount_b mountpoint = {0}".format(ls_mount_b))
-
         # Try to mount already mounted path
         # expecting EBUSY error
         try:
