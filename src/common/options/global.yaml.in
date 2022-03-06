@@ -3720,6 +3720,12 @@ options:
   level: advanced
   default: 100_M
   with_legacy: true
+- name: osd_warn_on_max_pglog_size
+  type: size
+  level: advanced
+  desc: Max pglog entry size that will issue warning message above that
+  default: 8_M
+  with_legacy: true
 - name: osd_bench_max_block_size
   type: size
   level: advanced
