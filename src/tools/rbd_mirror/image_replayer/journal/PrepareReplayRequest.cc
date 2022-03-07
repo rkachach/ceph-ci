@@ -26,22 +26,24 @@ namespace journal {
 
 using librbd::util::create_context_callback;
 
+static bool is_mirror_uuid_equal(std::string local_mirror_uuid,
+                                 std::string remote_mirror_uuid) {
+  if (local_mirror_uuid == remote_mirror_uuid) {
+    return true;
+  }
+  // We don't check that both mirror_uuid are strictly equals here because in a
+  // multipeer scenario the remote_mirror_uuid may change after a failover
+  // to another peer
+  return local_mirror_uuid != librbd::Journal<>::LOCAL_MIRROR_UUID &&
+      local_mirror_uuid != librbd::Journal<>::ORPHAN_MIRROR_UUID &&
+      remote_mirror_uuid != librbd::Journal<>::LOCAL_MIRROR_UUID &&
+      remote_mirror_uuid != librbd::Journal<>::ORPHAN_MIRROR_UUID;
+}
+
 template <typename I>
 void PrepareReplayRequest<I>::send() {
   *m_resync_requested = false;
   *m_syncing = false;
-
-  if (m_state_builder->local_image_id !=
-        m_state_builder->remote_client_meta.image_id) {
-    // somehow our local image has a different image id than the image id
-    // registered in the remote image
-    derr << "split-brain detected: local_image_id="
-         << m_state_builder->local_image_id << ", "
-         << "registered local_image_id="
-         << m_state_builder->remote_client_meta.image_id << dendl;
-    finish(-EEXIST);
-    return;
-  }
 
   std::shared_lock image_locker(m_state_builder->local_image_ctx->image_lock);
   if (m_state_builder->local_image_ctx->journal == nullptr) {
@@ -68,7 +70,7 @@ void PrepareReplayRequest<I>::send() {
            << "local tag data=" << m_local_tag_data << dendl;
   image_locker.unlock();
 
-  if (m_local_tag_data.mirror_uuid != m_state_builder->remote_mirror_uuid &&
+  if (!is_mirror_uuid_equal(m_local_tag_data.mirror_uuid, m_state_builder->remote_mirror_uuid) &&
       m_remote_promotion_state != librbd::mirror::PROMOTION_STATE_PRIMARY) {
     // if the local mirror is not linked to the (now) non-primary image,
     // stop the replay. Otherwise, we ignore that the remote is non-primary
@@ -84,8 +86,8 @@ void PrepareReplayRequest<I>::send() {
     return;
   } else if (m_state_builder->remote_client_meta.state ==
                librbd::journal::MIRROR_PEER_STATE_SYNCING &&
-             m_local_tag_data.mirror_uuid ==
-               m_state_builder->remote_mirror_uuid) {
+             is_mirror_uuid_equal(m_local_tag_data.mirror_uuid,
+               m_state_builder->remote_mirror_uuid)) {
     // if the initial sync hasn't completed, we cannot replay
     *m_syncing = true;
     finish(0);
@@ -99,7 +101,7 @@ template <typename I>
 void PrepareReplayRequest<I>::update_client_state() {
   if (m_state_builder->remote_client_meta.state !=
         librbd::journal::MIRROR_PEER_STATE_SYNCING ||
-      m_local_tag_data.mirror_uuid == m_state_builder->remote_mirror_uuid) {
+      is_mirror_uuid_equal(m_local_tag_data.mirror_uuid, m_state_builder->remote_mirror_uuid)) {
     get_remote_tag_class();
     return;
   }
@@ -218,8 +220,8 @@ void PrepareReplayRequest<I>::handle_get_remote_tags(int r) {
   // decode the remote tags
   for (auto &remote_tag : m_remote_tags) {
     if (m_local_tag_data.predecessor.commit_valid &&
-        m_local_tag_data.predecessor.mirror_uuid ==
-          m_state_builder->remote_mirror_uuid &&
+        is_mirror_uuid_equal(m_local_tag_data.predecessor.mirror_uuid,
+                             m_state_builder->remote_mirror_uuid) &&
         m_local_tag_data.predecessor.tag_tid > remote_tag.tid) {
       dout(10) << "skipping processed predecessor remote tag "
                << remote_tag.tid << dendl;
@@ -253,14 +255,14 @@ void PrepareReplayRequest<I>::handle_get_remote_tags(int r) {
 
     if (m_local_tag_data.mirror_uuid == librbd::Journal<>::ORPHAN_MIRROR_UUID) {
       // demotion last available local epoch
-
-      if (remote_tag_data.mirror_uuid == m_local_tag_data.mirror_uuid &&
+      if (is_mirror_uuid_equal(remote_tag_data.mirror_uuid,
+                               m_local_tag_data.mirror_uuid) &&
           remote_tag_data.predecessor.commit_valid &&
           remote_tag_data.predecessor.tag_tid ==
             m_local_tag_data.predecessor.tag_tid) {
         // demotion matches remote epoch
-
-        if (remote_tag_data.predecessor.mirror_uuid == m_local_mirror_uuid &&
+        if (is_mirror_uuid_equal(remote_tag_data.predecessor.mirror_uuid,
+                                 m_local_mirror_uuid) &&
             m_local_tag_data.predecessor.mirror_uuid ==
               librbd::Journal<>::LOCAL_MIRROR_UUID) {
           // local demoted and remote has matching event
@@ -269,12 +271,18 @@ void PrepareReplayRequest<I>::handle_get_remote_tags(int r) {
           continue;
         }
 
-        if (m_local_tag_data.predecessor.mirror_uuid ==
-              m_state_builder->remote_mirror_uuid &&
+        if (is_mirror_uuid_equal(m_local_tag_data.predecessor.mirror_uuid,
+                                 m_state_builder->remote_mirror_uuid) &&
             remote_tag_data.predecessor.mirror_uuid ==
               librbd::Journal<>::LOCAL_MIRROR_UUID) {
           // remote demoted and local has matching event
           dout(10) << "found matching remote demotion tag" << dendl;
+          remote_orphan_tag_tid = remote_tag.tid;
+          continue;
+        }
+        if (is_mirror_uuid_equal(m_local_tag_data.predecessor.mirror_uuid,
+                                 remote_tag_data.predecessor.mirror_uuid)) {
+          dout(10) << "found matching tags" << dendl;
           remote_orphan_tag_tid = remote_tag.tid;
           continue;
         }
@@ -297,7 +305,8 @@ void PrepareReplayRequest<I>::handle_get_remote_tags(int r) {
   }
 
   if (remote_tag_data_valid &&
-      m_local_tag_data.mirror_uuid == m_state_builder->remote_mirror_uuid) {
+      is_mirror_uuid_equal(m_local_tag_data.mirror_uuid,
+                           m_state_builder->remote_mirror_uuid)) {
     dout(10) << "local image is in clean replay state" << dendl;
   } else if (reconnect_orphan) {
     dout(10) << "remote image was demoted/promoted" << dendl;

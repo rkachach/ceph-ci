@@ -11,6 +11,7 @@
 #include "librbd/mirror/snapshot/UnlinkPeerRequest.h"
 #include "tools/rbd_mirror/InstanceWatcher.h"
 #include "tools/rbd_mirror/Threads.h"
+#include "tools/rbd_mirror/PoolMetaCache.h"
 #include "tools/rbd_mirror/image_replayer/CloseImageRequest.h"
 #include "tools/rbd_mirror/image_replayer/ReplayerListener.h"
 #include "tools/rbd_mirror/image_replayer/Utils.h"
@@ -277,6 +278,33 @@ struct Threads<librbd::MockTestImageCtx> {
   }
 };
 
+template<>
+struct PoolMetaCache<librbd::MockTestImageCtx> {
+  static PoolMetaCache* s_instance;
+
+  MOCK_CONST_METHOD2(get_local_pool_meta, int(int64_t, LocalPoolMeta*));
+  MOCK_METHOD2(set_local_pool_meta, void(int64_t, const LocalPoolMeta&));
+  MOCK_METHOD1(remove_local_pool_meta, void(int64_t));
+
+  MOCK_CONST_METHOD3(get_remote_pool_meta, int(int64_t, const std::string&,
+                                               RemotePoolMeta*));
+  MOCK_METHOD3(set_remote_pool_meta, void(int64_t, const std::string&,
+                                          const RemotePoolMeta&));
+  MOCK_METHOD2(remove_remote_pool_meta, void(int64_t, const std::string&));
+
+  PoolMetaCache(CephContext* cct) {
+    ceph_assert(s_instance == nullptr);
+    s_instance = this;
+  }
+
+  virtual ~PoolMetaCache() {
+    ceph_assert(s_instance == this);
+    s_instance = nullptr;
+  }
+};
+
+PoolMetaCache<librbd::MockTestImageCtx>* PoolMetaCache<librbd::MockTestImageCtx>::s_instance = nullptr;
+
 namespace {
 
 struct MockReplayerListener : public image_replayer::ReplayerListener {
@@ -351,10 +379,12 @@ struct StateBuilder<librbd::MockTestImageCtx> {
     : local_image_ctx(&local_image_ctx),
       remote_image_ctx(&remote_image_ctx),
       local_image_meta(&local_image_meta) {
+    remote_image_peer.uuid = remote_mirror_uuid;
   }
 
   librbd::MockTestImageCtx* local_image_ctx;
   librbd::MockTestImageCtx* remote_image_ctx;
+  Peer<librbd::MockTestImageCtx> remote_image_peer;
 
   std::string remote_mirror_uuid = "remote mirror uuid";
 
@@ -393,6 +423,7 @@ public:
   typedef InstanceWatcher<librbd::MockTestImageCtx> MockInstanceWatcher;
   typedef Threads<librbd::MockTestImageCtx> MockThreads;
   typedef CloseImageRequest<librbd::MockTestImageCtx> MockCloseImageRequest;
+  typedef PoolMetaCache<librbd::MockTestImageCtx> MockPoolMetaCache;
   typedef librbd::deep_copy::ImageCopyRequest<librbd::MockTestImageCtx> MockImageCopyRequest;
   typedef librbd::deep_copy::SnapshotCopyRequest<librbd::MockTestImageCtx> MockSnapshotCopyRequest;
   typedef librbd::mirror::ImageStateUpdateRequest<librbd::MockTestImageCtx> MockImageStateUpdateRequest;
@@ -642,6 +673,18 @@ public:
         }));
   }
 
+  void expect_remote_pool_meta_cache_get(
+      MockPoolMetaCache& mock_pool_meta_cache, const std::string& peer_uuid,
+      const RemotePoolMeta& expected_meta, int r) {
+    EXPECT_CALL(mock_pool_meta_cache, get_remote_pool_meta(_, peer_uuid, _))
+      .WillOnce(Invoke(
+          [expected_meta, r](int64_t, const std::string&,
+                             RemotePoolMeta* remote_pool_meta) {
+        *remote_pool_meta = expected_meta;
+        return r;
+      }));
+  }
+
   int wait_for_notification(uint32_t count) {
     std::unique_lock locker{m_lock};
     for (uint32_t idx = 0; idx < count; ++idx) {
@@ -695,7 +738,7 @@ public:
   librbd::ImageCtx* m_local_image_ctx = nullptr;
   librbd::ImageCtx* m_remote_image_ctx = nullptr;
 
-  PoolMetaCache m_pool_meta_cache{g_ceph_context};
+  MockPoolMetaCache m_pool_meta_cache{g_ceph_context};
 
   ceph::mutex m_lock = ceph::make_mutex(
     "TestMockImageReplayerSnapshotReplayer");
@@ -723,9 +766,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, InitShutDown) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -777,9 +819,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, SyncSnapshot) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
 
@@ -955,9 +996,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, InterruptedSync) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1040,9 +1080,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, RemoteImageDemoted) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1129,9 +1168,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, LocalImagePromoted) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1185,9 +1223,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, ResyncRequested) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1230,9 +1267,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, RegisterLocalUpdateWatcherError) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   // init
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
@@ -1263,9 +1299,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, RegisterRemoteUpdateWatcherError) 
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   // init
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
@@ -1302,9 +1337,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, UnregisterRemoteUpdateWatcherError
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1344,9 +1378,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, UnregisterLocalUpdateWatcherError)
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1386,9 +1419,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, LoadImageMetaError) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1434,9 +1466,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, RefreshLocalImageError) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1484,9 +1515,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, RefreshRemoteImageError) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1535,9 +1565,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, CopySnapshotsError) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1595,9 +1624,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, GetImageStateError) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1657,9 +1685,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, CreateNonPrimarySnapshotError) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1723,9 +1750,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, UpdateMirrorImageStateError) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1791,9 +1817,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, RequestSyncError) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1861,9 +1886,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, CopyImageError) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -1934,9 +1958,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, UpdateNonPrimarySnapshotError) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -2011,9 +2034,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, UnlinkPeerError) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -2099,9 +2121,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, SplitBrain) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -2162,9 +2183,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, RemoteSnapshotMissingSplitBrain) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -2230,9 +2250,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, RemoteFailover) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,
@@ -2371,9 +2390,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, UnlinkRemoteSnapshot) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
 
@@ -2449,9 +2467,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, SkipImageSync) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
 
@@ -2528,9 +2545,8 @@ TEST_F(TestMockImageReplayerSnapshotReplayer, ImageNameUpdated) {
   MockReplayer mock_replayer{&mock_threads, &mock_instance_watcher,
                              "local mirror uuid", &m_pool_meta_cache,
                              &mock_state_builder, &mock_replayer_listener};
-  m_pool_meta_cache.set_remote_pool_meta(
-    m_remote_io_ctx.get_id(),
-    {"remote mirror uuid", "remote mirror peer uuid"});
+  expect_remote_pool_meta_cache_get(m_pool_meta_cache, "remote mirror uuid",
+    {"remote mirror uuid", "remote mirror peer uuid"}, 0);
 
   librbd::UpdateWatchCtx* update_watch_ctx = nullptr;
   ASSERT_EQ(0, init_entry_replayer(mock_replayer, mock_threads,

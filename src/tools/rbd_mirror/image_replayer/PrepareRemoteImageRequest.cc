@@ -116,15 +116,16 @@ void PrepareRemoteImageRequest<I>::handle_get_mirror_info(int r) {
     dout(5) << "remote image mirroring is being disabled" << dendl;
     finish(-ENOENT);
     return;
-  } else if (m_promotion_state != librbd::mirror::PROMOTION_STATE_PRIMARY &&
-             (state_builder == nullptr ||
-              state_builder->local_image_id.empty() ||
-              state_builder->local_promotion_state ==
-                librbd::mirror::PROMOTION_STATE_UNKNOWN)) {
+  } else if (m_promotion_state != librbd::mirror::PROMOTION_STATE_PRIMARY) {
     // no local image and remote isn't primary -- don't sync it
     dout(5) << "remote image is not primary -- not syncing" << dendl;
-    finish(-EREMOTEIO);
-    return;
+    if (state_builder == nullptr ||
+        state_builder->local_image_id.empty() ||
+        state_builder->local_promotion_state == librbd::mirror::PROMOTION_STATE_UNKNOWN) {
+      finish(-EREMOTEIO);
+      return;
+    }
+    m_r = -ENOENT;
   }
 
   switch (m_mirror_image.mode) {
@@ -133,7 +134,7 @@ void PrepareRemoteImageRequest<I>::handle_get_mirror_info(int r) {
     break;
   case cls::rbd::MIRROR_IMAGE_MODE_SNAPSHOT:
     finalize_snapshot_state_builder();
-    finish(0);
+    finish(m_r);
     break;
   default:
     derr << "unsupported mirror image mode " << m_mirror_image.mode << " "
@@ -179,14 +180,14 @@ void PrepareRemoteImageRequest<I>::handle_get_client(int r) {
     register_client();
   } else if (r < 0) {
     derr << "failed to retrieve client: " << cpp_strerror(r) << dendl;
-    finish(r);
+    finish(m_r != 0 ? m_r : r);
   } else if (!util::decode_client_meta(m_client, &client_meta)) {
     // require operator intervention since the data is corrupt
     finish(-EBADMSG);
   } else {
     // skip registration if it already exists
     finalize_journal_state_builder(m_client.state, client_meta);
-    finish(0);
+    finish(m_r);
   }
 }
 
@@ -217,7 +218,7 @@ void PrepareRemoteImageRequest<I>::handle_register_client(int r) {
   if (r < 0) {
     derr << "failed to register with remote journal: " << cpp_strerror(r)
          << dendl;
-    finish(r);
+    finish(m_r != 0 ? m_r : r);
     return;
   }
 
@@ -227,13 +228,16 @@ void PrepareRemoteImageRequest<I>::handle_register_client(int r) {
   client_meta.state = librbd::journal::MIRROR_PEER_STATE_REPLAYING;
   finalize_journal_state_builder(cls::journal::CLIENT_STATE_CONNECTED,
                                  client_meta);
-  finish(0);
+  finish(m_r);
 }
 
 template <typename I>
 void PrepareRemoteImageRequest<I>::finalize_journal_state_builder(
     cls::journal::ClientState client_state,
     const MirrorPeerClientMeta& client_meta) {
+  if (m_r != 0) {
+    return;
+  }
   journal::StateBuilder<I>* state_builder = nullptr;
   if (*m_state_builder != nullptr) {
     // already verified that it's a matching builder in
@@ -244,6 +248,12 @@ void PrepareRemoteImageRequest<I>::finalize_journal_state_builder(
     state_builder = journal::StateBuilder<I>::create(m_global_image_id);
     *m_state_builder = state_builder;
   }
+
+  dout(10) << "remote_mirror_uuid=" << m_remote_pool_meta.mirror_uuid << ", "
+           << "remote_mirror_peer_uuid="
+           << m_remote_pool_meta.mirror_peer_uuid << ", "
+           << "remote_image_id=" << m_remote_image_id << ", "
+           << "remote_promotion_state=" << m_promotion_state << dendl;
 
   state_builder->remote_mirror_uuid = m_remote_pool_meta.mirror_uuid;
   state_builder->remote_image_id = m_remote_image_id;

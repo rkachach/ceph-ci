@@ -42,15 +42,11 @@ public:
 
   image_sync::SyncPointHandler* create_sync_point_handler() override;
 
-  bool replay_requires_remote_image() const override {
-    return false;
-  }
-
   BaseRequest* create_local_image_request(
       Threads<ImageCtxT>* threads,
       librados::IoCtx& local_io_ctx,
       const std::string& global_image_id,
-      PoolMetaCache* pool_meta_cache,
+      PoolMetaCache<ImageCtxT>* pool_meta_cache,
       ProgressContext* progress_ctx,
       Context* on_finish) override;
 
@@ -65,10 +61,8 @@ public:
       Threads<ImageCtxT>* threads,
       InstanceWatcher<ImageCtxT>* instance_watcher,
       const std::string& local_mirror_uuid,
-      PoolMetaCache* pool_meta_cache,
+      PoolMetaCache<ImageCtxT>* pool_meta_cache,
       ReplayerListener* replayer_listener) override;
-
-  std::string local_primary_mirror_uuid;
 
   Journaler* remote_journaler = nullptr;
   cls::journal::ClientState remote_client_state =
