@@ -1,8 +1,30 @@
 meta:
 - desc: run the rbd_mirror_snapshot.sh workunit to test the rbd-mirror daemon
+roles:
+- - cluster3.mon.a
+  - cluster3.mgr.x
+  - cluster3.osd.0
+  - cluster3.osd.1
+  - cluster3.osd.2
+  - cluster3.client.0
+- - cluster3.client.mirror
+  - cluster3.client.mirror.0
+  - cluster3.client.mirror.1
+  - cluster3.client.mirror.2
+  - cluster3.client.mirror.3
+  - cluster3.client.mirror.4
+  - cluster3.client.mirror.5
+  - cluster3.client.mirror.6
 tasks:
 - ceph:
     cluster: cluster3
+- exec:
+    cluster1.client.mirror.0:
+      - "sudo ceph --cluster cluster3 auth caps client.mirror mon 'profile rbd-mirror-peer' osd 'profile rbd'"
+      - "sudo ceph --cluster cluster3 auth caps client.mirror.0 mon 'profile rbd-mirror' osd 'profile rbd'"
+      - "sudo ceph --cluster cluster3 auth caps client.mirror.1 mon 'profile rbd-mirror' osd 'profile rbd'"
+      - "sudo ceph --cluster cluster3 auth caps client.mirror.2 mon 'profile rbd-mirror' osd 'profile rbd'"
+      - "sudo ceph --cluster cluster3 auth caps client.mirror.3 mon 'profile rbd-mirror' osd 'profile rbd'"
 - workunit:
     clients:
       cluster1.client.mirror: [rbd/rbd_mirror_snapshot.sh]
