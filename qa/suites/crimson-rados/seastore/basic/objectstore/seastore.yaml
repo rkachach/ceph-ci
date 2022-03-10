@@ -4,3 +4,4 @@ overrides:
     conf:
       osd:
         osd objectstore: seastore
+        seastore device size: 50G
